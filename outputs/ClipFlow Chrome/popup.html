@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClipFlow</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img class="brand-icon" src="icons/icon-48.png" alt="">
+    <h1>ClipFlow</h1>
+    <button id="settings-toggle" class="settings-toggle" type="button" aria-label="Ouvrir les réglages" aria-controls="settings-panel" aria-expanded="false" title="Réglages">⚙︎</button>
+  </header>
+
+  <main>
+    <section id="settings-panel" class="settings-panel" aria-label="Réglages du téléchargement" hidden>
+      <label class="destination-setting">
+        <span>Enregistrer dans</span>
+        <select id="destination" aria-label="Dossier de destination">
+          <option value="downloads">Téléchargements</option>
+          <option value="movies">Films</option>
+          <option value="desktop">Bureau</option>
+          <option value="premiere">Premiere Pro</option>
+          <option value="choose">Autre dossier…</option>
+        </select>
+      </label>
+      <label class="sound-option" title="Jouer un son à la fin du téléchargement">
+        <span class="option-copy">
+          <strong>Son de fin</strong>
+          <small>Quand le fichier est prêt</small>
+        </span>
+        <input id="completion-sound" type="checkbox" checked role="switch">
+      </label>
+    </section>
+
+    <section class="quick-options" aria-label="Option du fichier">
+      <label class="audio-option">
+        <span class="option-copy">
+          <strong>Audio uniquement</strong>
+          <small>MP3 sans vidéo</small>
+        </span>
+        <input id="audio-only" type="checkbox" role="switch">
+      </label>
+    </section>
+
+    <section id="download-progress" class="download-progress" hidden aria-live="polite">
+      <div>
+        <span id="progress-label">Téléchargement</span>
+        <small id="progress-detail">Préparation…</small>
+      </div>
+      <strong id="progress-percent">1 %</strong>
+    </section>
+
+    <section class="results" aria-live="polite">
+      <div class="results-heading">
+        <strong id="page-title">Analyse de la page…</strong>
+        <button id="rescan" class="icon-button" type="button" title="Relancer l’analyse" aria-label="Relancer l’analyse">↻</button>
+      </div>
+      <div id="status" class="status">Recherche des lecteurs vidéo…</div>
+      <div id="videos" class="video-list"></div>
+    </section>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

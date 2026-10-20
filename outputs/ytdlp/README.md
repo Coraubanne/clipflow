@@ -1,0 +1,40 @@
+# ClipFlow
+
+ClipFlow est une application macOS en français, basée sur le projet officiel `yt-dlp`, qui détecte et télécharge les vidéos compatibles depuis de nombreux sites.
+
+## Utilisation
+
+1. Installez `ClipFlow.app` dans Applications. Il s'agit d'un agent local invisible : aucune fenêtre, aucune icône dans le Dock et aucun Terminal ne s'ouvrent.
+2. Utilisez uniquement l’extension Chrome pour détecter la vidéo, choisir la destination et lancer le téléchargement.
+3. ClipFlow prend automatiquement la meilleure qualité disponible ; cochez seulement **Audio** dans l'extension si vous souhaitez un MP3.
+4. Téléchargez uniquement les vidéos que vous avez le droit d'enregistrer.
+
+## Extension Chrome
+
+Le dossier `ClipFlow Chrome` contient l’extension Chrome Manifest V3 **ClipFlow**. Elle n’injecte aucun bouton dans les pages. Un clic sur son icône analyse uniquement l’onglet actif, puis affiche les lecteurs HTML5, flux déclarés, liens média et lecteurs intégrés détectés. Son interface compacte sans contours utilise des surfaces flottantes et des ombres légères ; elle ne conserve qu’un sélecteur de dossier — **Téléchargements** par défaut — et la case **Audio**.
+
+Chrome impose une installation manuelle unique pour une extension locale : ouvrez `chrome://extensions`, activez **Mode développeur**, choisissez **Charger l'extension non empaquetée**, puis sélectionnez le dossier `ClipFlow Chrome`. L’extension utilise `activeTab` : elle obtient l’accès temporaire à la page seulement quand l’utilisateur clique sur son icône et ne demande pas l’accès permanent à tous les sites.
+
+L’extension 2.8.1 transmet soit l’adresse du flux direct, soit celle de la page lorsque le lecteur utilise une URL interne `blob:`. Une URL portée par un véritable lecteur HTML5 est prioritaire sur la page d’origine, ce qui permet notamment le téléchargement des MP4 progressifs de SeeArtTV. Pour un flux direct, l’extension transmet aussi la page d’origine comme référent afin que les sites compatibles puissent valider la demande. Les URL locales, privées, avec identifiants intégrés ou hors HTTP(S) sont refusées. Sur YouTube, seules les pages d’une vidéo, d’un Short, d’un direct ou d’un clip sont acceptées ; les résultats de recherche et les chaînes sont ignorés.
+
+## Premiere Pro
+
+Le module UXP `ClipFlow Premiere` utilise l’API officielle de Premiere Pro 25.6 ou plus récent. Lorsqu’un projet `.prproj` enregistré est ouvert, la destination **Premiere Pro** de l’extension crée `Médias ClipFlow` dans le dossier qui contient le projet, télécharge le MP4 à cet endroit, puis l’importe automatiquement à la racine du projet. L’importation ne commence qu’après la disparition de tous les fichiers temporaires : Premiere ne reçoit donc jamais un média incomplet.
+
+Le petit panneau **Fenêtre → Plug-ins UXP → ClipFlow** doit rester chargé dans Premiere. Il ne télécharge rien et ne copie pas le média : il publie uniquement le chemin du projet actif et traite les demandes d’import locales. Si le projet n’est pas enregistré, si le panneau n’est pas actif ou si Premiere ne répond plus, ClipFlow refuse la destination au lieu d’utiliser silencieusement un mauvais dossier.
+
+Pour les médias volumineux, ClipFlow laisse désormais jusqu’à trois minutes à Premiere Pro pour confirmer l’importation. Si Premiere tarde davantage ou refuse l’import, le téléchargement déjà terminé reste considéré comme réussi et disponible dans `Médias ClipFlow` ; seul l’ajout automatique au projet est alors signalé comme incomplet.
+
+Le profil vidéo prend la plus haute résolution proposée nativement en MP4 avec le codec H.264/AVC et privilégie l’audio original AAC/M4A. Les pistes HTTPS directes et reprenables sont préférées aux flux HLS dont l’autorisation peut expirer pendant une vidéo longue. Les pistes sont assemblées rapidement sans réencodage. Ce choix garantit la lecture dans QuickTime et les applications macOS courantes. Sur YouTube, où la 4K est généralement limitée à VP9/AV1, la meilleure version H.264 est souvent 1080p.
+
+ClipFlow utilise les clients par défaut de `yt-dlp` et son moteur JavaScript Apple. Le fournisseur WPC expérimental a été retiré : sur cette machine, son navigateur invisible échouait en boucle et retardait l'analyse des formats. Quatre fragments peuvent être téléchargés simultanément, un compromis plus fiable pour les vidéos HLS très découpées. Les fichiers intermédiaires sont placés dans le sous-dossier caché `.tubesave-incomplete` du dossier de destination, puis seul le résultat final est déplacé à la racine. Cette organisation garde le dossier visible propre, évite une copie entre deux disques et permet toujours de reprendre après une interruption. Les erreurs passagères de connexion sont réessayées avec une courte pause.
+
+ClipFlow commence sans lire la session du navigateur. Il utilise automatiquement le dernier profil Chrome pour YouTube uniquement si YouTube exige une authentification ou refuse dès le premier fragment avec une erreur 403, conformément à l’autorisation mémorisée. Pour un autre site connecté, ClipFlow demande une autorisation avant tout accès à la session Chrome. Aucun fichier de cookies permanent n'est exporté et Chrome reste invisible.
+
+Le mode silencieux que l’option d’affichage du format active implicitement dans yt-dlp est désactivé, et les sorties Python sont transmises sans mémoire tampon : les erreurs arrivent donc réellement en temps réel dans l’interface. ClipFlow peut alors arrêter immédiatement les reprises inutiles. Seule une validation YouTube silencieuse est interrompue après 60 secondes ; ClipFlow effectue alors jusqu'à deux reprises automatiques. Une vidéo en cours de transfert ou d'assemblage n'est pas interrompue par ce délai. Le détail technique est conservé temporairement dans `ClipFlow-download.log`.
+
+Si macOS bloque l'application au premier lancement, faites un clic droit sur `ClipFlow.app`, choisissez **Ouvrir**, puis confirmez.
+
+Lorsqu’un fichier est déjà présent, ClipFlow récupère son chemin depuis la réponse de `yt-dlp`, l’indique clairement et active **Afficher le fichier** au lieu de donner l’impression qu’aucun téléchargement n’a eu lieu.
+
+La version distribuée de ClipFlow 1.40 est une application autonome limitée à l’architecture Apple Silicon ARM64. Son moteur natif utilise uniquement un interpréteur d’événements non graphique : il ne crée plus de fenêtre macOS, même cachée, et n’apparaît donc ni dans le Dock ni à l’écran. L’extension 2.8.6 est l’unique interface. Son service d’arrière-plan actualise le badge et mémorise le pourcentage réel même lorsque le panneau est fermé ; la valeur courante est restaurée dès sa réouverture. Les flux HLS/DASH détectés reçoivent le titre de leur page et un identifiant stable afin d’éviter les collisions entre fichiers génériques nommés `playlist`. L’extension vérifie aussi les clés déclarées par le manifeste HLS avant d’envoyer un téléchargement : un flux réellement chiffré est signalé immédiatement et aucun fragment illisible n’est créé. Les sites et flux pris en charge dépendent de `yt-dlp`; les contenus DRM ou chiffrés par une plateforme ne sont pas contournés.

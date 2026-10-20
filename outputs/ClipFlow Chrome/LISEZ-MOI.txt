@@ -1,0 +1,38 @@
+INSTALLATION DE CLIPFLOW · DÉTECTEUR VIDÉO
+
+1. Dans Chrome, ouvrez : chrome://extensions
+2. Activez « Mode développeur » en haut à droite.
+3. Cliquez sur « Charger l’extension non empaquetée ».
+4. Sélectionnez le dossier qui contient ce fichier.
+5. Épinglez ClipFlow dans la barre d’outils de Chrome si vous le souhaitez.
+
+Ouvrez une page contenant une vidéo, lancez la lecture quelques secondes, puis
+cliquez sur l’icône ClipFlow dans Chrome. L’extension analyse uniquement
+l’onglet actif et affiche les lecteurs HTML5, les vidéos directes et les flux
+HLS/DASH déjà chargés par la page. Si nécessaire, cliquez sur ↻ pour relancer
+l’analyse. Choisissez le dossier puis cliquez sur « Télécharger ». ClipFlow prend
+automatiquement la meilleure qualité disponible, 4K comprise. Cochez seulement
+« Audio uniquement » si vous souhaitez un MP3 sans vidéo.
+
+La destination « Premiere Pro » enregistre la vidéo dans « Médias ClipFlow »,
+à côté du projet .prproj actuellement ouvert, puis l’importe automatiquement
+dans ce projet. Elle nécessite Premiere Pro 25.6 ou plus récent et le module
+ClipFlow Premiere fourni avec l’application. Dans Premiere, ouvrez une fois
+Fenêtre > Extensions UXP > ClipFlow et laissez ce petit panneau chargé.
+
+Aucun bouton n’est ajouté dans les pages YouTube et l’extension ne demande pas
+l’accès permanent à tous les sites. Chrome lui accorde l’accès à la page active
+lorsque vous cliquez sur son icône. Un accès permanent limité aux sous-domaines
+de tf1.fr permet de repérer leur manifeste vidéo, qui est chargé dans un lecteur
+séparé et dont l’adresse ne se termine pas toujours par .m3u8 ou .mpd. Quand le
+lecteur charge un DASH chiffré, ClipFlow demande aussi au service officiel TF1
+sa variante HLS et ne la propose que si elle est livrée sans DRM. Le jeton de la
+session sert uniquement à cette requête locale et n’est ni enregistré ni exporté.
+
+ClipFlow doit avoir été ouvert au moins une fois. Il sera ensuite ouvert
+automatiquement par l’extension au moment du téléchargement. Si vous déplacez
+l’application, ouvrez-la une fois à son nouvel emplacement.
+
+ClipFlow et yt-dlp prennent en charge de nombreux sites ainsi que les flux MP4,
+WebM, HLS et DASH non chiffrés. L’extension signale les lecteurs DRM, mais ne
+contourne pas leur chiffrement.

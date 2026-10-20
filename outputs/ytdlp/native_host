@@ -1,0 +1,18 @@
+#!/bin/zsh
+
+SCRIPT_DIR="${0:A:h}"
+CONTENTS_DIR="${SCRIPT_DIR:h:h}"
+APP_EXECUTABLE="$CONTENTS_DIR/MacOS/ClipFlow"
+PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python"
+
+if [[ -x "$APP_EXECUTABLE" ]]; then
+  exec "$APP_EXECUTABLE" --tubesave-native-host
+fi
+
+if [[ -x "$PYTHON_BIN" ]]; then
+  export PYTHONNOUSERSITE=1
+  export PYTHONDONTWRITEBYTECODE=1
+  exec "$PYTHON_BIN" "$SCRIPT_DIR/native_host.py"
+fi
+
+exit 1

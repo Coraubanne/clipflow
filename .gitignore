@@ -1,0 +1,24 @@
+.DS_Store
+/.tools/
+
+# Fichiers de travail et audits locaux
+/work/
+
+# Archives de distribution générées localement
+/outputs/ClipFlow-complet-*.zip
+
+# Environnement Python et résultats de compilation
+/outputs/ytdlp/.venv/
+/outputs/ytdlp/build/
+/outputs/ytdlp/dist/
+**/__pycache__/
+*.py[cod]
+
+# Fichiers temporaires de téléchargement et journaux
+*.part
+*.ytdl
+*.log
+.tubesave-incomplete/
+
+# Sauvegardes produites par le script
+/ClipFlow-PROJET-SAUVEGARDE-*.zip
