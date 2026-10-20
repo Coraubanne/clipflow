@@ -17,6 +17,7 @@ mkdir -p "${archive_root}/distribution"
 
 rsync -a \
   --exclude '.DS_Store' \
+  --exclude '.tools/' \
   --exclude 'work/' \
   --exclude 'outputs/ClipFlow-complet-*.zip' \
   --exclude 'outputs/ytdlp/.venv/' \
