@@ -736,6 +736,11 @@ def build_download_command(
         "--newline",
         "--no-colors",
         "--no-playlist",
+        # Let yt-dlp's generic extractor use the bundled curl-cffi browser
+        # impersonation when a page is protected by Cloudflare. Specialized
+        # extractors (YouTube, Vimeo, Dailymotion, etc.) remain unchanged.
+        "--extractor-args",
+        "generic:impersonate",
         "--socket-timeout",
         "30",
         "--extractor-retries",
@@ -805,6 +810,7 @@ def build_download_command(
         direct_combined = f"b[ext=mp4][vcodec^=avc1]{minimum_height}[protocol^=http]"
         fallback = (
             f"bv[ext=mp4][vcodec^=avc1]{minimum_height}+ba[ext=m4a]/"
+            f"bv[ext=mp4][vcodec^=avc1]{minimum_height}+ba[ext=mp4]/"
             f"b[ext=mp4][vcodec^=avc1]{minimum_height}"
         )
         # Generic direct MP4 links often omit codec metadata even when the
@@ -837,6 +843,9 @@ class DownloadWorker:
         automatic_cookies: bool = False,
     ) -> None:
         self.command = command
+        self.youtube_hd_guard = is_youtube_url(command[-1]) and any(
+            "[height>=720]" in argument for argument in command
+        )
         self.events = events
         self.environment = environment
         self.cookie_browser = cookie_browser
@@ -884,7 +893,7 @@ class DownloadWorker:
                 if return_code == 0:
                     self.events.put(("finished", None))
                     return
-                if quality_unavailable and not quality_fallback_used:
+                if quality_unavailable and self.youtube_hd_guard and not quality_fallback_used:
                     if quality_retries < 2:
                         quality_retries += 1
                         self.events.put(("retry_quality", quality_retries))

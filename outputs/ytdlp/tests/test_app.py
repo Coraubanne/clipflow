@@ -130,7 +130,10 @@ class TubeSaveTests(unittest.TestCase):
         self.assertFalse(any("res:1080" in item for item in command))
         self.assertFalse(any("vcodec:h264" in item for item in command))
         self.assertFalse(any("hevc" in item.lower() for item in command))
-        self.assertNotIn("--extractor-args", command)
+        self.assertEqual(
+            command[command.index("--extractor-args") + 1],
+            "generic:impersonate",
+        )
         self.assertEqual(command[command.index("--concurrent-fragments") + 1], "4")
         selector = command[command.index("--format") + 1]
         self.assertEqual(
@@ -138,6 +141,7 @@ class TubeSaveTests(unittest.TestCase):
             "bv[ext=mp4][vcodec^=avc1][height>=720][protocol^=http]+ba[ext=m4a][protocol^=http]/"
             "b[ext=mp4][vcodec^=avc1][height>=720][protocol^=http]/"
             "bv[ext=mp4][vcodec^=avc1][height>=720]+ba[ext=m4a]/"
+            "bv[ext=mp4][vcodec^=avc1][height>=720]+ba[ext=mp4]/"
             "b[ext=mp4][vcodec^=avc1][height>=720]/"
             "b[ext=mp4][height>=720][protocol^=http]/b[ext=mp4][height>=720]",
         )
@@ -272,6 +276,30 @@ class TubeSaveTests(unittest.TestCase):
             "https://example.com/watch/42",
         )
         self.assertEqual(command[-1], "https://cdn.example.com/video/master.m3u8")
+
+    def test_generic_pages_use_bundled_browser_impersonation(self):
+        command = build_download_command(
+            ["yt-dlp"],
+            "https://www.example.com/news/video.html",
+            Path("/tmp"),
+            PROFILES[0],
+            Path("/tmp/ffmpeg"),
+            None,
+        )
+        self.assertEqual(
+            command[command.index("--extractor-args") + 1],
+            "generic:impersonate",
+        )
+        self.assertIn("+ba[ext=mp4]", command[command.index("--format") + 1])
+
+    def test_generic_format_failure_does_not_trigger_youtube_quality_retry(self):
+        worker = DownloadWorker(
+            ["yt-dlp", "--format", "best", "https://example.com/video"],
+            queue.Queue(),
+            {},
+            None,
+        )
+        self.assertFalse(worker.youtube_hd_guard)
 
     def test_vimeo_manifest_uses_page_title_and_stable_identity(self):
         command = build_download_command(
