@@ -51,4 +51,14 @@ else
     --notes "Version complète de ClipFlow. Le ZIP contient l’application macOS, l’extension Chrome et le module Premiere Pro."
 fi
 
+# gh creates a temporary draft while uploading large assets. If its final
+# publication request is skipped or interrupted, make the release visible
+# instead of silently leaving a complete ZIP under an untagged draft URL.
+if [[ "$("${gh_bin}" release view "${tag}" --json isDraft --jq '.isDraft')" == "true" ]]; then
+  "${gh_bin}" release edit "${tag}" \
+    --draft=false \
+    --tag "${tag}" \
+    --title "ClipFlow ${tag}"
+fi
+
 print "Version ${tag} publiée avec ${archive}."
