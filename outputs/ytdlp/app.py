@@ -381,10 +381,13 @@ def extension_request_values(
 
 def consume_extension_requests(
     inbox: Path,
+    limit: int = 20,
 ) -> list[tuple[str, Path, str, str | None, str | None, str | None, Path | None, Path | None, bool]]:
     requests: list[tuple[str, Path, str, str | None, str | None, str | None, Path | None, Path | None, bool]] = []
+    if limit <= 0:
+        return requests
     try:
-        files = sorted(inbox.glob("*.json"))[:20]
+        files = sorted(inbox.glob("*.json"))[:limit]
     except OSError:
         return requests
     for path in files:
@@ -998,6 +1001,7 @@ class TubeSaveApp(tk.Tk):
     LINE = "#D2D2D7"
     SOFT = "#E9E9EB"
     SHADOW = "#DEDEE3"
+    IDLE_SHUTDOWN_SECONDS = 45.0
 
     def __init__(self) -> None:
         # useTk=False creates only a Tcl event interpreter. No NSApplication,
@@ -1023,6 +1027,7 @@ class TubeSaveApp(tk.Tk):
         self.background_job = False
         self.completion_sound_enabled = True
         self.current_progress = 0.0
+        self.last_activity_at = time.monotonic()
         self.request_referer: str | None = None
         self.request_source_title: str | None = None
         self.extension_inbox = extension_inbox()
@@ -1041,6 +1046,7 @@ class TubeSaveApp(tk.Tk):
         self.open_result = HeadlessControl()
         self.after(100, self._poll)
         self.after(250, self._poll_extension_requests)
+        self.after(5000, self._idle_shutdown_check)
 
     def run_forever(self) -> None:
         """Run Tcl timers without ever loading the graphical Tk framework."""
@@ -1274,30 +1280,49 @@ class TubeSaveApp(tk.Tk):
             cookie_source,
             self.automatic_browser_session and is_youtube_url(self.url.get()),
         )
+        self.last_activity_at = time.monotonic()
         write_extension_status(self.active_job_id, "running", 1, "Analyse de la vidéo…")
         self.worker.start()
 
     def _poll_extension_requests(self) -> None:
-        self.extension_jobs.extend(consume_extension_requests(self.extension_inbox))
-        if not self.worker and self.extension_jobs:
-            url, destination, quality, referer, source_title, job_id, premiere_project, premiere_bridge, completion_sound = self.extension_jobs.popleft()
-            self.active_job_id = job_id
-            self.active_premiere_project = premiere_project
-            self.active_premiere_bridge = premiere_bridge
-            # Every queued request comes from Chrome, including legacy requests
-            # without a job identifier. It must therefore stay non-interactive.
-            self.background_job = True
-            self.completion_sound_enabled = completion_sound
-            self.url.set(url)
-            self.folder.set(str(destination))
-            self.audio_only.set(quality == PROFILES[1].label)
-            self.request_referer = referer
-            self.request_source_title = source_title
-            self.status.set("Vidéo détectée par l’extension")
-            self.details.set("ClipFlow prépare le téléchargement…")
-            write_extension_status(job_id, "running", 1, "Préparation du téléchargement…")
-            self.after(120, self._start)
-        self.after(400, self._poll_extension_requests)
+        try:
+            # Never remove several requests from disk while a download or a
+            # Premiere import is active. If this process becomes stale, the
+            # native host can see the pending file and launch a fresh instance.
+            if not self.worker:
+                if not self.extension_jobs:
+                    self.extension_jobs.extend(
+                        consume_extension_requests(self.extension_inbox, limit=1)
+                    )
+                if self.extension_jobs:
+                    url, destination, quality, referer, source_title, job_id, premiere_project, premiere_bridge, completion_sound = self.extension_jobs.popleft()
+                    self.active_job_id = job_id
+                    self.active_premiere_project = premiere_project
+                    self.active_premiere_bridge = premiere_bridge
+                    # Every queued request comes from Chrome, including legacy requests
+                    # without a job identifier. It must therefore stay non-interactive.
+                    self.background_job = True
+                    self.completion_sound_enabled = completion_sound
+                    self.url.set(url)
+                    self.folder.set(str(destination))
+                    self.audio_only.set(quality == PROFILES[1].label)
+                    self.request_referer = referer
+                    self.request_source_title = source_title
+                    self.status.set("Vidéo détectée par l’extension")
+                    self.details.set("ClipFlow prépare le téléchargement…")
+                    self.last_activity_at = time.monotonic()
+                    write_extension_status(job_id, "running", 1, "Préparation du téléchargement…")
+                    self.after(120, self._start)
+        except Exception as error:
+            write_extension_status(
+                self.active_job_id,
+                "error",
+                self.current_progress,
+                f"Le moteur ClipFlow a redémarré après une erreur : {error}",
+            )
+            self._reset()
+        finally:
+            self.after(400, self._poll_extension_requests)
 
     def _cancel(self) -> None:
         if self.worker:
@@ -1305,18 +1330,42 @@ class TubeSaveApp(tk.Tk):
             self.worker.cancel()
 
     def _poll(self) -> None:
-        try:
-            while True:
+        while True:
+            try:
                 event, payload = self.events.get_nowait()
+            except queue.Empty:
+                break
+            try:
                 self._event(event, payload)
-        except queue.Empty:
-            pass
+            except Exception as error:
+                self.logs.append(f"Erreur interne : {error}")
+                write_extension_status(
+                    self.active_job_id,
+                    "error",
+                    self.current_progress,
+                    "ClipFlow s’est rétabli après une erreur interne. Relancez le téléchargement.",
+                )
+                self._reset()
         self.after(100, self._poll)
+
+    def _idle_shutdown_check(self) -> None:
+        pending_on_disk = False
+        try:
+            pending_on_disk = next(self.extension_inbox.glob("*.json"), None) is not None
+        except OSError:
+            pass
+        if self.worker or self.extension_jobs or pending_on_disk:
+            self.last_activity_at = time.monotonic()
+        elif time.monotonic() - self.last_activity_at >= self.IDLE_SHUTDOWN_SECONDS:
+            self.tk.setvar("::clipflow_agent_running", "idle")
+            return
+        self.after(5000, self._idle_shutdown_check)
 
     def _event(self, event: str, payload: object) -> None:
         if event == "progress":
             value, speed, eta = payload  # type: ignore[misc]
             self.current_progress = float(value)
+            self.last_activity_at = time.monotonic()
             self.bar["value"] = value
             self.percent.configure(text=f"{value:.0f} %")
             self.status.set("Téléchargement en cours")
@@ -1453,6 +1502,7 @@ class TubeSaveApp(tk.Tk):
         self.active_premiere_bridge = None
         self.background_job = False
         self.completion_sound_enabled = True
+        self.last_activity_at = time.monotonic()
         self.download.configure(state="normal")
         self.cancel.configure(state="disabled")
 

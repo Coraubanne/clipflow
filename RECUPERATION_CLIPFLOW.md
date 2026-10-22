@@ -4,7 +4,7 @@ Cette sauvegarde permet de réinstaller la version actuelle ou de reprendre le d
 
 ## Versions sauvegardées
 
-- Application macOS : ClipFlow 1.40 (build 41), Apple Silicon ARM64
+- Application macOS : ClipFlow 1.41 (build 42), Apple Silicon ARM64
 - Extension Chrome : ClipFlow 2.8.6, Manifest V3
 - Module Premiere Pro : ClipFlow Premiere 1.0.4
 - Moteur : yt-dlp 2026.08.19
@@ -16,7 +16,7 @@ Cette sauvegarde permet de réinstaller la version actuelle ou de reprendre le d
 - `outputs/ClipFlow Chrome` : extension Chrome complète.
 - `outputs/ClipFlow Premiere` : module UXP pour Premiere Pro.
 - `.git` : dépôt Git local avec tout l’historique utile, afin de reprendre le suivi des modifications immédiatement.
-- `distribution/ClipFlow-complet-v58.zip` : version prête à réinstaller sans reconstruire le projet.
+- `distribution/ClipFlow-complet-v59.zip` : version prête à réinstaller sans reconstruire le projet.
 - `RECUPERATION_CLIPFLOW.md`, `GITHUB.md` et `PROJECT_VERSION.json` : notices et état de la sauvegarde.
 
 Les environnements virtuels, caches Python et fichiers temporaires de compilation sont volontairement exclus. Ils sont volumineux, spécifiques à l’ordinateur et peuvent être recréés à partir des fichiers de dépendances.
@@ -25,7 +25,7 @@ La sauvegarde ne contient ni vidéos téléchargées, ni cookies Chrome, ni hist
 
 ## Réinstallation rapide
 
-1. Décompresser `distribution/ClipFlow-complet-v58.zip`.
+1. Décompresser `distribution/ClipFlow-complet-v59.zip`.
 2. Copier `ClipFlow.app` dans `/Applications`.
 3. Faire un clic droit sur l’application, choisir **Ouvrir**, puis confirmer si macOS le demande. ClipFlow reste invisible lorsqu’il fonctionne.
 4. Conserver le dossier `ClipFlow Chrome` dans un emplacement permanent.

@@ -471,6 +471,29 @@ class TubeSaveTests(unittest.TestCase):
         self.assertIsNone(jobs[0][7])
         self.assertTrue(jobs[0][8])
 
+    def test_busy_agent_leaves_later_extension_jobs_on_disk(self):
+        with tempfile.TemporaryDirectory() as directory:
+            inbox = Path(directory)
+            destination = inbox / "Videos"
+            destination.mkdir()
+            for name, video_id in (("001.json", "abcdefghijk"), ("002.json", "lmnopqrstuv")):
+                (inbox / name).write_text(
+                    json.dumps(
+                        {
+                            "url": f"https://www.youtube.com/watch?v={video_id}",
+                            "quality": "best",
+                            "destination": str(destination),
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            jobs = consume_extension_requests(inbox, limit=1)
+
+            self.assertEqual(len(jobs), 1)
+            self.assertFalse((inbox / "001.json").exists())
+            self.assertTrue((inbox / "002.json").is_file())
+
     def test_premiere_import_is_queued_only_after_final_file_exists(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
