@@ -608,6 +608,40 @@ class TubeSaveTests(unittest.TestCase):
         self.assertIsNone(payload[0])
         self.assertIn("Fichier téléchargé", payload[1])
 
+    def test_premiere_response_created_after_missing_read_is_not_lost(self):
+        events = queue.Queue()
+        with tempfile.TemporaryDirectory() as directory:
+            response = Path(directory) / "job.json"
+
+            class AppearingResponse:
+                def __init__(self):
+                    self.read_attempts = 0
+
+                def read_text(self, encoding="utf-8"):
+                    self.read_attempts += 1
+                    if self.read_attempts == 1:
+                        response.write_text(
+                            '{"state":"complete","message":"Média ajouté au projet Premiere Pro"}',
+                            encoding=encoding,
+                        )
+                        raise FileNotFoundError
+                    return response.read_text(encoding=encoding)
+
+                def unlink(self):
+                    response.unlink()
+
+            with (
+                patch("app.time.monotonic", side_effect=[0.0, 0.1, 0.2]),
+                patch("app.time.sleep"),
+            ):
+                wait_for_premiere_import(AppearingResponse(), events, timeout_seconds=1.0)
+
+            self.assertFalse(response.exists())
+        event, payload = events.get_nowait()
+        self.assertEqual(event, "premiere_import")
+        self.assertTrue(payload[0])
+        self.assertIn("ajouté", payload[1])
+
     def test_premiere_wait_is_bounded(self):
         import inspect
 

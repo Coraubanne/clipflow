@@ -467,12 +467,14 @@ def wait_for_premiere_import(
         except (OSError, ValueError, TypeError) as error:
             events.put(("premiere_import", (False, f"Réponse Premiere Pro invalide : {error}")))
             return
-        finally:
-            if result_path.exists():
-                try:
-                    result_path.unlink()
-                except OSError:
-                    pass
+        # Only remove a response after it has actually been read. Premiere can
+        # create the file during the short sleep following FileNotFoundError;
+        # deleting it from a finally block would lose a valid acknowledgement
+        # and incorrectly report the import as still pending.
+        try:
+            result_path.unlink()
+        except OSError:
+            pass
         success = isinstance(payload, dict) and payload.get("state") == "complete"
         message = str(payload.get("message", "")) if isinstance(payload, dict) else ""
         events.put(("premiere_import", (success, message)))
