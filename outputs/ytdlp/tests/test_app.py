@@ -24,12 +24,14 @@ from app import (
     is_youtube_url,
     is_retryable_output,
     last_used_browser_profile,
+    quality_format_unavailable_output,
     queue_premiere_import,
     wait_for_premiere_import,
     play_completion_sound,
     resume_legacy_partials,
     validation_timed_out,
     with_browser_cookies,
+    without_minimum_video_height,
     write_extension_status,
 )
 
@@ -91,7 +93,7 @@ class TubeSaveTests(unittest.TestCase):
         self.assertFalse(is_web_url("file:///tmp/video.mp4"))
         self.assertFalse(is_web_url("https://user:secret@example.com/video"))
 
-    def test_compatible_profile_requires_h264_mp4_without_resolution_limit(self):
+    def test_compatible_profile_requires_h264_mp4_without_upper_resolution_limit(self):
         profile = PROFILES[0]
         with tempfile.TemporaryDirectory() as directory:
             command = build_download_command(
@@ -109,7 +111,7 @@ class TubeSaveTests(unittest.TestCase):
         selector = command[command.index("--format") + 1]
         self.assertIn("[ext=mp4]", selector)
         self.assertIn("[vcodec^=avc1]", selector)
-        self.assertTrue(selector.startswith("bv[ext=mp4][vcodec^=avc1][protocol^=http]"))
+        self.assertTrue(selector.startswith("bv[ext=mp4][vcodec^=avc1][height>=720][protocol^=http]"))
 
     def test_default_is_unlimited_compatible_mp4(self):
         self.assertEqual(PROFILES[0].mode, "compatible")
@@ -133,14 +135,15 @@ class TubeSaveTests(unittest.TestCase):
         selector = command[command.index("--format") + 1]
         self.assertEqual(
             selector,
-            "bv[ext=mp4][vcodec^=avc1][protocol^=http]+ba[ext=m4a][protocol^=http]/"
-            "b[ext=mp4][vcodec^=avc1][protocol^=http]/"
-            "bv[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4][vcodec^=avc1]/"
-            "b[ext=mp4][protocol^=http]/b[ext=mp4]",
+            "bv[ext=mp4][vcodec^=avc1][height>=720][protocol^=http]+ba[ext=m4a][protocol^=http]/"
+            "b[ext=mp4][vcodec^=avc1][height>=720][protocol^=http]/"
+            "bv[ext=mp4][vcodec^=avc1][height>=720]+ba[ext=m4a]/"
+            "b[ext=mp4][vcodec^=avc1][height>=720]/"
+            "b[ext=mp4][height>=720][protocol^=http]/b[ext=mp4][height>=720]",
         )
         self.assertNotIn("height<=", selector)
         self.assertNotIn("bv*", selector)
-        self.assertEqual(selector.rsplit("/", 1)[-1], "b[ext=mp4]")
+        self.assertEqual(selector.rsplit("/", 1)[-1], "b[ext=mp4][height>=720]")
         self.assertEqual(command[command.index("--merge-output-format") + 1], "mp4")
         self.assertNotIn("--remux-video", command)
 
@@ -305,6 +308,65 @@ class TubeSaveTests(unittest.TestCase):
         self.assertTrue(is_retryable_output("The read operation timed out"))
         self.assertFalse(is_retryable_output("Requested format is not available"))
 
+    def test_youtube_low_quality_response_is_retried_then_relaxed(self):
+        command = build_download_command(
+            ["yt-dlp"],
+            "https://www.youtube.com/watch?v=abcdefghijk",
+            Path("/tmp"),
+            PROFILES[0],
+            Path("/tmp/ffmpeg"),
+            None,
+        )
+        self.assertIn("[height>=720]", command[command.index("--format") + 1])
+        relaxed = without_minimum_video_height(command)
+        self.assertNotIn("[height>=720]", relaxed[relaxed.index("--format") + 1])
+        self.assertTrue(quality_format_unavailable_output("ERROR: Requested format is not available"))
+
+    def test_worker_retries_transient_sd_only_youtube_response(self):
+        class QualityRecoveringWorker(DownloadWorker):
+            def __init__(self):
+                super().__init__(["yt-dlp", "--format", "best[height>=720]", "https://youtu.be/abc"], queue.Queue(), {}, None)
+                self.results = iter(
+                    [
+                        (1, False, False, False, True),
+                        (0, False, False, False, False),
+                    ]
+                )
+
+            def _download_once(self):
+                return next(self.results)
+
+        worker = QualityRecoveringWorker()
+        with patch("app.time.sleep"):
+            worker._run()
+        self.assertEqual(worker.events.get_nowait(), ("retry_quality", 1))
+        self.assertEqual(worker.events.get_nowait(), ("finished", None))
+
+    def test_worker_accepts_true_sd_source_after_bounded_hd_checks(self):
+        class SdOnlyWorker(DownloadWorker):
+            def __init__(self):
+                super().__init__(["yt-dlp", "--format", "best[height>=720]", "https://youtu.be/abc"], queue.Queue(), {}, None)
+                self.results = iter(
+                    [
+                        (1, False, False, False, True),
+                        (1, False, False, False, True),
+                        (1, False, False, False, True),
+                        (0, False, False, False, False),
+                    ]
+                )
+
+            def _download_once(self):
+                return next(self.results)
+
+        worker = SdOnlyWorker()
+        with patch("app.time.sleep"):
+            worker._run()
+        self.assertEqual(worker.events.get_nowait(), ("retry_quality", 1))
+        self.assertEqual(worker.events.get_nowait(), ("retry_quality", 2))
+        self.assertEqual(worker.events.get_nowait(), ("quality_fallback", None))
+        self.assertEqual(worker.events.get_nowait(), ("finished", None))
+        self.assertNotIn("[height>=720]", worker.command[worker.command.index("--format") + 1])
+
     def test_early_403_requests_browser_validation(self):
         line = "Got error: HTTP Error 403: Forbidden. Retrying fragment 1"
         self.assertTrue(authentication_required_output(line, download_started=False))
@@ -330,8 +392,8 @@ class TubeSaveTests(unittest.TestCase):
                 super().__init__(["yt-dlp"], queue.Queue(), {}, None)
                 self.results = iter(
                     [
-                        (1, True, False, False),
-                        (0, False, False, False),
+                        (1, True, False, False, False),
+                        (0, False, False, False, False),
                     ]
                 )
 
@@ -387,8 +449,8 @@ class TubeSaveTests(unittest.TestCase):
                 )
                 self.results = iter(
                     [
-                        (1, False, True, False),
-                        (0, False, False, False),
+                        (1, False, True, False, False),
+                        (0, False, False, False, False),
                     ]
                 )
 
@@ -517,6 +579,12 @@ class TubeSaveTests(unittest.TestCase):
         self.assertEqual(event, "premiere_import")
         self.assertIsNone(payload[0])
         self.assertIn("Fichier téléchargé", payload[1])
+
+    def test_premiere_wait_is_bounded(self):
+        import inspect
+
+        timeout = inspect.signature(wait_for_premiere_import).parameters["timeout_seconds"].default
+        self.assertLessEqual(timeout, 30.0)
 
     def test_native_host_manifest_is_registered(self):
         with tempfile.TemporaryDirectory() as directory:

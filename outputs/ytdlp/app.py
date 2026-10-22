@@ -65,6 +65,10 @@ DRM_OUTPUT_MARKERS = (
     "protected by drm",
     "drm protected",
 )
+QUALITY_FORMAT_OUTPUT_MARKERS = (
+    "requested format is not available",
+    "requested format not available",
+)
 COMPLETION_SOUNDS = (
     Path("/System/Library/Sounds/Pop.aiff"),
     Path("/System/Library/Sounds/Glass.aiff"),
@@ -228,6 +232,12 @@ def validation_timed_out(last_output_at: float, download_started: bool, now: flo
 def is_retryable_output(line: str) -> bool:
     normalized = line.casefold()
     return any(marker in normalized for marker in RETRYABLE_OUTPUT_MARKERS)
+
+
+def quality_format_unavailable_output(line: str) -> bool:
+    """Detect a transient YouTube response that exposes only low-quality formats."""
+    normalized = line.casefold()
+    return any(marker in normalized for marker in QUALITY_FORMAT_OUTPUT_MARKERS)
 
 
 def authentication_required_output(line: str, download_started: bool = False) -> bool:
@@ -445,7 +455,7 @@ def queue_premiere_import(
 def wait_for_premiere_import(
     result_path: Path,
     events: queue.Queue[tuple[str, object]],
-    timeout_seconds: float = 180.0,
+    timeout_seconds: float = 30.0,
 ) -> None:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -587,6 +597,18 @@ def with_browser_cookies(command: list[str], browser_name: str) -> list[str]:
         browser_name,
         command[-1],
     ]
+
+
+def without_minimum_video_height(command: list[str]) -> list[str]:
+    """Allow a genuine SD-only YouTube video after bounded HD retries."""
+    relaxed = list(command)
+    try:
+        format_index = relaxed.index("--format") + 1
+    except ValueError:
+        return relaxed
+    if format_index < len(relaxed):
+        relaxed[format_index] = relaxed[format_index].replace("[height>=720]", "")
+    return relaxed
 
 
 def ffmpeg_executable() -> Path | None:
@@ -778,13 +800,20 @@ def build_download_command(
         # Select direct HTTPS H.264/AVC MP4 tracks first. YouTube's HLS links
         # can expire during long downloads, whereas its direct DASH tracks are
         # resumable and reliable. Keep HLS as a fallback for other sites.
-        direct = "bv[ext=mp4][vcodec^=avc1][protocol^=http]+ba[ext=m4a][protocol^=http]"
-        direct_combined = "b[ext=mp4][vcodec^=avc1][protocol^=http]"
-        fallback = "bv[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4][vcodec^=avc1]"
+        minimum_height = "[height>=720]" if is_youtube_url(url) else ""
+        direct = f"bv[ext=mp4][vcodec^=avc1]{minimum_height}[protocol^=http]+ba[ext=m4a][protocol^=http]"
+        direct_combined = f"b[ext=mp4][vcodec^=avc1]{minimum_height}[protocol^=http]"
+        fallback = (
+            f"bv[ext=mp4][vcodec^=avc1]{minimum_height}+ba[ext=m4a]/"
+            f"b[ext=mp4][vcodec^=avc1]{minimum_height}"
+        )
         # Generic direct MP4 links often omit codec metadata even when the
         # actual file is H.264/AAC (for example SeeArtTV). Keep them as a final
         # no-conversion fallback after the stricter AVC choices.
-        generic_mp4 = "b[ext=mp4][protocol^=http]/b[ext=mp4]"
+        generic_mp4 = (
+            f"b[ext=mp4]{minimum_height}[protocol^=http]/"
+            f"b[ext=mp4]{minimum_height}"
+        )
         selector = f"{direct}/{direct_combined}/{fallback}/{generic_mp4}"
         command.extend(
             [
@@ -844,15 +873,27 @@ class DownloadWorker:
     def _run(self) -> None:
         try:
             automatic_retries = 0
+            quality_retries = 0
+            quality_fallback_used = False
             cookies_attempted = False
             while True:
-                return_code, retryable, authentication_required, timed_out = self._download_once()
+                return_code, retryable, authentication_required, timed_out, quality_unavailable = self._download_once()
                 if self.cancelled:
                     self.events.put(("cancelled", None))
                     return
                 if return_code == 0:
                     self.events.put(("finished", None))
                     return
+                if quality_unavailable and not quality_fallback_used:
+                    if quality_retries < 2:
+                        quality_retries += 1
+                        self.events.put(("retry_quality", quality_retries))
+                        time.sleep(quality_retries)
+                        continue
+                    self.command = without_minimum_video_height(self.command)
+                    quality_fallback_used = True
+                    self.events.put(("quality_fallback", None))
+                    continue
                 if authentication_required and self.cookie_browser and not cookies_attempted:
                     cookies_attempted = True
                     if self.automatic_cookies:
@@ -891,7 +932,7 @@ class DownloadWorker:
                 self._terminate(process)
                 return
 
-    def _download_once(self) -> tuple[int, bool, bool, bool]:
+    def _download_once(self) -> tuple[int, bool, bool, bool, bool]:
         self._attempt_timed_out = False
         self._last_output_at = time.monotonic()
         self._download_started = False
@@ -916,6 +957,7 @@ class DownloadWorker:
         assert self.process.stdout is not None
         retryable = False
         authentication_required = False
+        quality_unavailable = False
         for raw_line in self.process.stdout:
             self._last_output_at = time.monotonic()
             line = raw_line.strip()
@@ -948,6 +990,8 @@ class DownloadWorker:
                         self._terminate(self.process)
                 if is_retryable_output(line):
                     retryable = True
+                if quality_format_unavailable_output(line):
+                    quality_unavailable = True
                 if "Extracting cookies from" in line:
                     self.events.put(("phase", "Lecture autorisée de la session Chrome…"))
                 elif "Extracted " in line and "cookies" in line:
@@ -962,7 +1006,13 @@ class DownloadWorker:
                 elif line.startswith("[Merger]"):
                     self.events.put(("phase", "Assemblage audio et vidéo sans réencodage…"))
                 self.events.put(("log", line))
-        return self.process.wait(), retryable, authentication_required, self._attempt_timed_out
+        return (
+            self.process.wait(),
+            retryable,
+            authentication_required,
+            self._attempt_timed_out,
+            quality_unavailable,
+        )
 
 
 class HeadlessValue:
@@ -1028,6 +1078,7 @@ class TubeSaveApp(tk.Tk):
         self.completion_sound_enabled = True
         self.current_progress = 0.0
         self.last_activity_at = time.monotonic()
+        self.premiere_import_pending = False
         self.request_referer: str | None = None
         self.request_source_title: str | None = None
         self.extension_inbox = extension_inbox()
@@ -1289,7 +1340,7 @@ class TubeSaveApp(tk.Tk):
             # Never remove several requests from disk while a download or a
             # Premiere import is active. If this process becomes stale, the
             # native host can see the pending file and launch a fresh instance.
-            if not self.worker:
+            if not self.worker and not self.premiere_import_pending:
                 if not self.extension_jobs:
                     self.extension_jobs.extend(
                         consume_extension_requests(self.extension_inbox, limit=1)
@@ -1354,7 +1405,7 @@ class TubeSaveApp(tk.Tk):
             pending_on_disk = next(self.extension_inbox.glob("*.json"), None) is not None
         except OSError:
             pass
-        if self.worker or self.extension_jobs or pending_on_disk:
+        if self.worker or self.premiere_import_pending or self.extension_jobs or pending_on_disk:
             self.last_activity_at = time.monotonic()
         elif time.monotonic() - self.last_activity_at >= self.IDLE_SHUTDOWN_SECONDS:
             self.tk.setvar("::clipflow_agent_running", "idle")
@@ -1404,6 +1455,14 @@ class TubeSaveApp(tk.Tk):
             self.status.set("Connexion rétablie · nouvel essai…")
             self.details.set(f"Reprise automatique {payload}/2 · le fichier partiel est conservé")
             write_extension_status(self.active_job_id, "running", max(1, self.current_progress), self.details.get())
+        elif event == "retry_quality":
+            self.status.set("Recherche de la meilleure qualité…")
+            self.details.set(f"YouTube n’a renvoyé que la basse définition · nouvelle analyse {payload}/2")
+            write_extension_status(self.active_job_id, "running", max(1, self.current_progress), self.details.get())
+        elif event == "quality_fallback":
+            self.status.set("Qualité maximale de la source…")
+            self.details.set("Aucun flux HD disponible après vérification · téléchargement du meilleur flux proposé")
+            write_extension_status(self.active_job_id, "running", max(1, self.current_progress), self.details.get())
         elif event == "needs_cookies":
             browser_name = str(payload).capitalize()
             write_extension_status(
@@ -1444,6 +1503,7 @@ class TubeSaveApp(tk.Tk):
                     self._finish_premiere_import(False, str(error))
                     return
                 self.worker = None
+                self.premiere_import_pending = True
                 self.cancel.configure(state="disabled")
                 self.status.set("Import dans Premiere Pro…")
                 self.details.set(self.last_file.name)
@@ -1497,6 +1557,7 @@ class TubeSaveApp(tk.Tk):
 
     def _reset(self) -> None:
         self.worker = None
+        self.premiere_import_pending = False
         self.active_job_id = None
         self.active_premiere_project = None
         self.active_premiere_bridge = None
