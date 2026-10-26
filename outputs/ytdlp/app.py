@@ -119,6 +119,15 @@ def is_youtube_url(value: str) -> bool:
     )
 
 
+def is_direct_webm_url(value: str) -> bool:
+    """Recognize standalone WebM files that need a compatible MP4 conversion."""
+    try:
+        parsed = urlparse(value.strip())
+    except ValueError:
+        return False
+    return parsed.scheme in {"http", "https"} and parsed.path.casefold().endswith(".webm")
+
+
 def is_web_url(value: object) -> bool:
     """Accept public HTTP(S) pages while refusing local or credential-bearing URLs."""
     if not isinstance(value, str) or not value or len(value) > 8192:
@@ -797,6 +806,23 @@ def build_download_command(
             ]
         )
     else:
+        if is_direct_webm_url(url):
+            # Some documentation sites use genuine silent WebM animations as
+            # their only video source. They are not split technical tracks, but
+            # macOS and Premiere need an H.264 MP4 file. Recode only this direct
+            # WebM case; normal MP4/HLS/DASH downloads remain conversion-free.
+            command.extend(
+                [
+                    "--format",
+                    "bestvideo*+bestaudio/best",
+                    "--recode-video",
+                    "mp4",
+                    "--postprocessor-args",
+                    "VideoConvertor:-c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart",
+                ]
+            )
+            command.append(url)
+            return command
         command.extend(
             [
                 "--format-sort-force",

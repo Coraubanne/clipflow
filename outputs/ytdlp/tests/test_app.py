@@ -117,6 +117,26 @@ class TubeSaveTests(unittest.TestCase):
         self.assertEqual(PROFILES[0].mode, "compatible")
         self.assertIsNone(PROFILES[0].max_height)
 
+    def test_direct_webm_is_recoded_to_premiere_compatible_mp4(self):
+        command = build_download_command(
+            ["python", "-m", "yt_dlp"],
+            "https://scrollprize.org/img/tutorials/pi-symbol3.webm?cache=1",
+            Path("/tmp"),
+            PROFILES[0],
+            Path("/tmp/ffmpeg"),
+            None,
+            referer="https://scrollprize.org/tutorial3",
+            title_hint="Vidéo 1",
+        )
+        self.assertEqual(command[command.index("--format") + 1], "bestvideo*+bestaudio/best")
+        self.assertEqual(command[command.index("--recode-video") + 1], "mp4")
+        postprocessor_args = command[command.index("--postprocessor-args") + 1]
+        self.assertIn("-c:v libx264", postprocessor_args)
+        self.assertIn("-pix_fmt yuv420p", postprocessor_args)
+        self.assertIn("-c:a aac", postprocessor_args)
+        self.assertNotIn("--merge-output-format", command)
+        self.assertEqual(command[-1], "https://scrollprize.org/img/tutorials/pi-symbol3.webm?cache=1")
+
     def test_default_prioritizes_max_h264_resolution_and_original_audio(self):
         command = build_download_command(
             ["python", "-m", "yt_dlp"],

@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 6;
-const EXPECTED_EXTENSION_VERSION = "2.8.6";
+const EXPECTED_EXTENSION_VERSION = "2.8.7";
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
   // quand ses fichiers changent. L’ouverture du popup applique la mise à jour.
@@ -533,6 +533,14 @@ function restoreActiveProgress(tabId) {
   });
 }
 
+function requiresWebmConversion(video) {
+  try {
+    return new URL(video.url).pathname.toLowerCase().endsWith(".webm");
+  } catch (_error) {
+    return false;
+  }
+}
+
 function createVideoCard(video, index) {
   const card = document.createElement("article");
   card.className = "video-card";
@@ -551,7 +559,10 @@ function createVideoCard(video, index) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "download";
-  button.textContent = "Télécharger";
+  const defaultButtonLabel = requiresWebmConversion(video)
+    ? "Télécharger et convertir en MP4"
+    : "Télécharger";
+  button.textContent = defaultButtonLabel;
   const feedback = document.createElement("div");
   feedback.className = "video-feedback";
 
@@ -566,6 +577,12 @@ function createVideoCard(video, index) {
   }
 
   button.addEventListener("click", () => {
+    if (requiresWebmConversion(video)) {
+      const accepted = window.confirm(
+        "Cette vidéo est au format WebM. ClipFlow doit la convertir en MP4 pour la rendre compatible avec macOS et Premiere Pro. Voulez-vous continuer ?",
+      );
+      if (!accepted) return;
+    }
     button.disabled = true;
     button.textContent = "Envoi…";
     feedback.textContent = "";
@@ -582,7 +599,7 @@ function createVideoCard(video, index) {
       settingsVersion: SETTINGS_VERSION,
     }, (response) => {
       button.disabled = false;
-      button.textContent = "Télécharger";
+      button.textContent = defaultButtonLabel;
       if (chrome.runtime.lastError || !response?.ok) {
         feedback.dataset.kind = "error";
         feedback.textContent = response?.error || "ClipFlow est indisponible.";
@@ -597,7 +614,7 @@ function createVideoCard(video, index) {
         showProgress(response.jobId, activePage.tabId, response.destinationLabel, button, feedback);
       } else {
         button.disabled = false;
-        button.textContent = "Télécharger";
+        button.textContent = defaultButtonLabel;
       }
     });
   });
