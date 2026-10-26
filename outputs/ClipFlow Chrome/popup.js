@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 6;
-const EXPECTED_EXTENSION_VERSION = "2.8.7";
+const EXPECTED_EXTENSION_VERSION = "2.8.8";
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
   // quand ses fichiers changent. L’ouverture du popup applique la mise à jour.
@@ -132,7 +132,7 @@ function detectVideosOnPage() {
     try { decoded = decodeURIComponent(url); } catch (_error) { /* URL signée */ }
     if (/\.m3u8(?:$|[?#&])/i.test(decoded) || /(?:format|type)=m3u8/i.test(decoded)) return "HLS";
     if (/\.mpd(?:$|[?#&])/i.test(decoded) || /(?:format|type)=mpd/i.test(decoded)) return "DASH";
-    if (/\.mp4(?:$|[?#&])/i.test(decoded)) return "MP4";
+    if (/\.mp4(?:$|[?#&])/i.test(decoded) || /(?:format|type)=mp4/i.test(decoded)) return "MP4";
     if (/\.webm(?:$|[?#&])/i.test(decoded)) return "WEBM";
     if (/\.(?:m4v|mov|ogv)(?:$|[?#&])/i.test(decoded)) return "VIDÉO";
     if (/\.(?:m4a|mp3|aac|ogg|opus)(?:$|[?#&])/i.test(decoded)) return "AUDIO";
@@ -235,26 +235,51 @@ function detectVideosOnPage() {
     const width = video.videoWidth || video.clientWidth || 0;
     const height = video.videoHeight || video.clientHeight || 0;
     const dimensions = width && height ? `${width}×${height}` : "lecteur HTML5";
-    const label = video.getAttribute("aria-label") || video.getAttribute("title") || `Vidéo ${index + 1}`;
+    const substackPlayer = /(^|\.)substack\.com$/i.test(location.hostname)
+      ? video.closest("[data-media-upload-id]")
+      : null;
+    const substackMediaId = substackPlayer
+      ? video.dataset.videoId || substackPlayer.dataset.mediaUploadId || ""
+      : "";
+    let nearbyLabel = "";
+    let previous = substackPlayer?.previousElementSibling || null;
+    for (let distance = 0; previous && distance < 5; distance += 1) {
+      const emphasized = previous.querySelector?.("strong")?.textContent?.trim();
+      if (emphasized) {
+        nearbyLabel = emphasized;
+        break;
+      }
+      previous = previous.previousElementSibling;
+    }
+    const label = nearbyLabel
+      || video.getAttribute("aria-label")
+      || video.getAttribute("title")
+      || `Vidéo ${index + 1}`;
     const rect = video.getBoundingClientRect();
     const playerKey = visibleVideoElements.length
       ? `visual-${Math.round(rect.left / 40)}-${Math.round(rect.top / 40)}-${Math.round(rect.width / 40)}-${Math.round(rect.height / 40)}`
       : `player-${index}`;
     const sources = [
+      substackMediaId
+        ? `${location.origin}/api/v1/video/upload/${encodeURIComponent(substackMediaId)}/src?type=mp4`
+        : "",
       video.currentSrc,
       video.src,
       ...Array.from(video.querySelectorAll("source[src]"), (source) => source.src),
     ].filter(Boolean);
     const directSources = sources.filter((source) => /^https?:/i.test(source));
-    directSources.forEach((source) => add(source, label, `${dimensions} · lecteur HTML5`, {
-      priority: 100,
-      playerKey,
-      source: "player",
-      // A URL carried by a real <video> element is a complete source for
-      // progressive players such as SeeArtTV. Without this hint, the filter
-      // could prefer the unsupported HTML page over the MP4 being played.
-      mediaRole: "audio-video",
-    }));
+    directSources.forEach((source) => {
+      const isSubstackMp4 = Boolean(substackMediaId) && source.includes(`/video/upload/${substackMediaId}/`);
+      add(source, label, isSubstackMp4 ? `${dimensions} · source MP4 Substack` : `${dimensions} · lecteur HTML5`, {
+        priority: isSubstackMp4 ? 130 : 100,
+        playerKey,
+        source: isSubstackMp4 ? "substack" : "player",
+        // A URL carried by a real <video> element is a complete source for
+        // progressive players such as SeeArtTV. Without this hint, the filter
+        // could prefer the unsupported HTML page over the MP4 being played.
+        mediaRole: "audio-video",
+      });
+    });
     add(pageUrl, label, `${dimensions} · extraction depuis la page`, {
       kind: "PAGE",
       pageFallback: true,
@@ -534,6 +559,7 @@ function restoreActiveProgress(tabId) {
 }
 
 function requiresWebmConversion(video) {
+  if (video.kind === "WEBM") return true;
   try {
     return new URL(video.url).pathname.toLowerCase().endsWith(".webm");
   } catch (_error) {

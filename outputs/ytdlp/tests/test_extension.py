@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.8.7")
+        self.assertEqual(manifest["version"], "2.8.8")
         self.assertEqual(manifest["name"], "ClipFlow")
         self.assertEqual(
             set(manifest["permissions"]),
@@ -20,7 +20,7 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.8.7"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.8.8"', source)
         self.assertIn("chrome.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
@@ -185,6 +185,7 @@ class ChromeExtensionTests(unittest.TestCase):
     def test_direct_webm_requires_confirmation_before_conversion_download(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
         self.assertIn("function requiresWebmConversion(video)", source)
+        self.assertIn('if (video.kind === "WEBM") return true;', source)
         self.assertIn('.endsWith(".webm")', source)
         self.assertIn("if (requiresWebmConversion(video))", source)
         self.assertIn("const accepted = window.confirm(", source)
@@ -195,6 +196,16 @@ class ChromeExtensionTests(unittest.TestCase):
         confirmation = source.index("window.confirm(", click_handler)
         send_download = source.index("chrome.runtime.sendMessage({", confirmation)
         self.assertLess(confirmation, send_download)
+
+    def test_substack_native_players_use_their_public_mp4_sources(self):
+        source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
+        self.assertIn('video.closest("[data-media-upload-id]")', source)
+        self.assertIn("video.dataset.videoId", source)
+        self.assertIn("/api/v1/video/upload/", source)
+        self.assertIn("/src?type=mp4", source)
+        self.assertIn('source: isSubstackMp4 ? "substack" : "player"', source)
+        self.assertIn("priority: isSubstackMp4 ? 130 : 100", source)
+        self.assertIn('/(?:format|type)=mp4/i', source)
 
 
 if __name__ == "__main__":
