@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.12.1";
+const EXPECTED_EXTENSION_VERSION = "2.13.0";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
@@ -230,6 +230,7 @@ async function installAvailableUpdate() {
 
 function setSettingsOpen(open) {
   settingsPanel.hidden = !open;
+  document.body.classList.toggle("settings-open", open);
   settingsToggle.setAttribute("aria-expanded", String(open));
   settingsToggle.setAttribute("aria-label", open ? t("closeSettings") : t("openSettings"));
 }
@@ -277,7 +278,7 @@ async function loadSettings() {
   await saveSettings();
 }
 
-function detectVideosOnPage(uiLanguage = "fr") {
+async function detectVideosOnPage(uiLanguage = "fr") {
   const copy = uiLanguage === "en" ? {
     detectedVideo: "Detected video", youtubePlayer: "YouTube player", bestQuality: "best quality via yt-dlp",
     dailymotionPlayer: "Dailymotion player", htmlPlayer: "HTML5 player", video: "Video",
@@ -424,6 +425,40 @@ function detectVideosOnPage(uiLanguage = "fr") {
     } catch (_error) {
       return "";
     }
+  }
+
+  async function inlineAmazonThumbnails(candidates) {
+    const targets = candidates.filter((candidate) => {
+      try {
+        return /(^|\.)media-amazon\./i.test(new URL(candidate.thumbnail).hostname);
+      } catch (_error) {
+        return false;
+      }
+    }).slice(0, 12);
+    await Promise.all(targets.map(async (candidate) => {
+      try {
+        const response = await fetch(candidate.thumbnail, {
+          cache: "force-cache",
+          credentials: "omit",
+          referrerPolicy: "no-referrer",
+        });
+        if (!response.ok) return;
+        const blob = await response.blob();
+        if (!blob.type.startsWith("image/") || blob.size > 180_000) return;
+        const encoded = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(blob);
+        });
+        if (/^data:image\//i.test(encoded) && encoded.length <= 250_000) {
+          candidate.thumbnail = encoded;
+          candidate.thumbnailScore = 100;
+        }
+      } catch (_error) {
+        // L’URL distante reste utilisable si Amazon refuse exceptionnellement la copie locale.
+      }
+    }));
   }
 
   function add(rawUrl, label, detail, options = {}) {
@@ -726,6 +761,7 @@ function detectVideosOnPage(uiLanguage = "fr") {
   });
 
   found.sort((left, right) => right.priority - left.priority || left.label.localeCompare(right.label));
+  await inlineAmazonThumbnails(found);
   return { pageUrl, pageTitle: title, drmDetected, durationSeconds, videos: found.slice(0, 30) };
 }
 

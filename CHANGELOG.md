@@ -2,6 +2,12 @@
 
 All notable user-facing changes are documented here.
 
+## 2.13.0 — 2026-11-13
+
+- Turned settings into a dedicated view that temporarily replaces video results and file options until the gear is clicked again.
+- Made Amazon video thumbnails reliable by locally inlining the public poster image exposed by each player.
+- Kept the Amazon thumbnail workaround permission-free and memory-only.
+
 ## 2.12.1 — 2026-11-13
 
 - Invalidated the cached update status whenever the installed Chrome extension version changes.

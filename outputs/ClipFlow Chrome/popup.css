@@ -154,6 +154,19 @@ main { padding: 0 9px 9px; }
 
 .settings-panel[hidden] { display: none; }
 
+body.settings-open .quick-options,
+body.settings-open .download-progress,
+body.settings-open .results {
+  display: none !important;
+}
+
+body.settings-open .settings-panel {
+  margin-bottom: 0;
+  min-height: 292px;
+  position: relative;
+  z-index: 2;
+}
+
 .panel-heading {
   display: flex;
   flex-direction: column;
