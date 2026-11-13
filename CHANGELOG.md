@@ -2,6 +2,12 @@
 
 All notable user-facing changes are documented here.
 
+## 2.9.2 — 2026-11-13
+
+- Removed the explanatory sentence below the extension-language selector for a cleaner settings panel.
+- Added a thumbnail to each detected-video card when the page or player exposes one.
+- Published the first release using the semantic `vMAJOR.MINOR.PATCH` tag format.
+
 ## 2.9.1 — 2026-11-13
 
 - Gave the expanded settings area a distinct blue treatment while keeping the compact Apple-style layout.

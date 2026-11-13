@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.9.1")
+        self.assertEqual(manifest["version"], "2.9.2")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,12 +27,24 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.9.1"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.9.2"', source)
         self.assertIn("chrome.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
         self.assertIn('return "DASH"', source)
         self.assertIn("allFrames: true", source)
+
+    def test_video_cards_show_available_thumbnails(self):
+        source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
+        styles = (EXTENSION / "popup.css").read_text(encoding="utf-8")
+        self.assertIn('meta[property="og:image"]', source)
+        self.assertIn("video.poster || pageThumbnail", source)
+        self.assertIn("value.thumbnailUrl", source)
+        self.assertIn("https://i.ytimg.com/vi/", source)
+        self.assertIn('thumbnail.className = "video-thumbnail"', source)
+        self.assertIn("thumbnail.addEventListener(\"error\"", source)
+        self.assertIn(".video-thumbnail", styles)
+        self.assertIn("object-fit: cover", styles)
 
     def test_popup_sends_page_title_for_generic_stream_filenames(self):
         popup = (EXTENSION / "popup.js").read_text(encoding="utf-8")
@@ -215,7 +227,8 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("language: activeLanguage()", source)
         self.assertIn("const language = interfaceLanguage(message?.language)", background)
         self.assertIn("Langue de l’extension", markup)
-        self.assertIn("N’affecte pas la langue audio des vidéos", markup)
+        self.assertNotIn("N’affecte pas la langue audio des vidéos", markup)
+        self.assertNotIn("languageHint", source)
         self.assertIn('id="extension-version"', markup)
         self.assertIn('t("extensionVersion"', source)
 

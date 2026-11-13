@@ -27,6 +27,7 @@ Le projet est pensé pour les monteurs, documentalistes audiovisuels, recherchis
 ## Points forts
 
 - Détecte les vidéos de page compatibles, médias directs, flux HLS/DASH et lecteurs intégrés.
+- Affiche la miniature fournie par la page ou le lecteur à côté de chaque vidéo détectée.
 - Sélectionne la meilleure qualité MP4/H.264 disponible, y compris la 4K lorsqu’une source compatible existe.
 - Privilégie la langue audio originale lorsque la source l’expose.
 - Distingue clairement la langue de l’interface de celle des vidéos et affiche la version installée de l’extension.

@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.9.1";
+const EXPECTED_EXTENSION_VERSION = "2.9.2";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
@@ -20,7 +20,7 @@ const UI_TEXT = {
   fr: {
     openSettings: "Ouvrir les réglages", closeSettings: "Fermer les réglages", settings: "Réglages",
     downloadSettings: "Réglages du téléchargement", language: "Langue de l’extension", languageAuto: "Automatique",
-    languageHint: "N’affecte pas la langue audio des vidéos", extensionVersion: "Extension {version}",
+    extensionVersion: "Extension {version}",
     saveTo: "Enregistrer dans", destinationFolder: "Dossier de destination", downloads: "Téléchargements",
     movies: "Films", desktop: "Bureau", otherFolder: "Autre dossier…", chosenFolder: "Dossier choisi",
     completionSoundTitle: "Jouer un son à la fin du téléchargement", completionSound: "Son de fin",
@@ -54,7 +54,7 @@ const UI_TEXT = {
   en: {
     openSettings: "Open settings", closeSettings: "Close settings", settings: "Settings",
     downloadSettings: "Download settings", language: "Extension language", languageAuto: "Automatic",
-    languageHint: "Does not change the videos’ audio language", extensionVersion: "Extension {version}",
+    extensionVersion: "Extension {version}",
     saveTo: "Save to", destinationFolder: "Destination folder", downloads: "Downloads",
     movies: "Movies", desktop: "Desktop", otherFolder: "Other folder…", chosenFolder: "Selected folder",
     completionSoundTitle: "Play a sound when the download finishes", completionSound: "Completion sound",
@@ -286,6 +286,14 @@ function detectVideosOnPage(uiLanguage = "fr") {
   );
   const pageUrl = location.href;
   const title = document.title || location.hostname;
+  const pageThumbnailSource = document.querySelector(
+    'meta[property="og:image"], meta[property="og:image:secure_url"], meta[name="twitter:image"], meta[name="twitter:image:src"]',
+  )?.content || "";
+  let pageThumbnail = "";
+  try {
+    const resolvedThumbnail = new URL(pageThumbnailSource, pageUrl);
+    if (["http:", "https:"].includes(resolvedThumbnail.protocol)) pageThumbnail = resolvedThumbnail.href;
+  } catch (_error) { /* aucune miniature de page exploitable */ }
   const found = [];
   const seen = new Map();
   const allVideoElements = Array.from(document.querySelectorAll("video"));
@@ -315,6 +323,18 @@ function detectVideosOnPage(uiLanguage = "fr") {
       return ["/shorts/", "/live/", "/embed/", "/clip/"].some((prefix) => parsed.pathname.startsWith(prefix));
     } catch (_error) {
       return false;
+    }
+  }
+
+  function youtubeVideoId(rawUrl) {
+    try {
+      const parsed = new URL(rawUrl);
+      if (parsed.hostname === "youtu.be") return parsed.pathname.split("/").filter(Boolean)[0] || "";
+      if (parsed.pathname === "/watch") return parsed.searchParams.get("v") || "";
+      const match = parsed.pathname.match(/^\/(?:shorts|live|embed)\/([^/?#]+)/);
+      return match?.[1] || "";
+    } catch (_error) {
+      return "";
     }
   }
 
@@ -398,7 +418,13 @@ function detectVideosOnPage(uiLanguage = "fr") {
       playerKey: options.playerKey || "",
       source: options.source || "page",
       mediaRole,
+      thumbnail: "",
     };
+    const thumbnailSource = options.thumbnail || pageThumbnail;
+    try {
+      const thumbnail = new URL(thumbnailSource, pageUrl);
+      if (["http:", "https:"].includes(thumbnail.protocol)) candidate.thumbnail = thumbnail.href;
+    } catch (_error) { /* la carte restera sans miniature */ }
     const identity = options.playerKey ? `${url}|${options.playerKey}` : url;
     const previousIndex = seen.get(identity);
     if (previousIndex !== undefined) {
@@ -416,10 +442,12 @@ function detectVideosOnPage(uiLanguage = "fr") {
     const height = player?.videoHeight || player?.clientHeight || 0;
     const dimensions = width && height ? `${width}×${height}` : copy.youtubePlayer;
     if (isYouTubeVideoPage(pageUrl)) {
+      const videoId = youtubeVideoId(pageUrl);
       add(pageUrl, title, `${dimensions} · ${copy.bestQuality}`, {
         kind: "PAGE",
         pageFallback: true,
         priority: 120,
+        thumbnail: videoId ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg` : pageThumbnail,
       });
     }
     return { pageUrl, pageTitle: title, drmDetected, videos: found };
@@ -439,6 +467,7 @@ function detectVideosOnPage(uiLanguage = "fr") {
         playerKey: "dailymotion-player",
         source: "page",
         mediaRole: "audio-video",
+        thumbnail: pageThumbnail,
       });
     }
     return { pageUrl, pageTitle: title, drmDetected, durationSeconds, videos: found };
@@ -491,6 +520,7 @@ function detectVideosOnPage(uiLanguage = "fr") {
         // progressive players such as SeeArtTV. Without this hint, the filter
         // could prefer the unsupported HTML page over the MP4 being played.
         mediaRole: "audio-video",
+        thumbnail: video.poster || pageThumbnail,
       });
     });
     add(pageUrl, label, `${dimensions} · ${copy.fromPage}`, {
@@ -500,6 +530,7 @@ function detectVideosOnPage(uiLanguage = "fr") {
       playerKey,
       source: "page",
       mediaRole: "audio-video",
+      thumbnail: video.poster || pageThumbnail,
     });
   });
 
@@ -546,6 +577,9 @@ function detectVideosOnPage(uiLanguage = "fr") {
           ? `embed-${structuredVideoIndex}`
           : `structured-${structuredVideoIndex}`;
         structuredVideoIndex += 1;
+        const thumbnail = Array.isArray(value.thumbnailUrl)
+          ? value.thumbnailUrl.find((item) => typeof item === "string")
+          : (typeof value.thumbnailUrl === "string" ? value.thumbnailUrl : "");
         for (const property of ["contentUrl", "embedUrl", "url"]) {
           if (!audioOnlyObject && typeof value[property] === "string") {
             add(value[property], value.name || `${copy.video} ${structuredVideoIndex}`, copy.declaredMedia, {
@@ -553,6 +587,7 @@ function detectVideosOnPage(uiLanguage = "fr") {
               source: "structured",
               playerKey: structuredKey,
               mediaRole: /VideoObject/i.test(typeText) ? "audio-video" : "unknown",
+              thumbnail,
             });
           }
         }
@@ -783,6 +818,21 @@ function requiresWebmConversion(video) {
 function createVideoCard(video, index) {
   const card = document.createElement("article");
   card.className = "video-card";
+  let thumbnail = null;
+  if (video.thumbnail) {
+    thumbnail = document.createElement("img");
+    thumbnail.className = "video-thumbnail";
+    thumbnail.src = video.thumbnail;
+    thumbnail.alt = "";
+    thumbnail.loading = "eager";
+    thumbnail.referrerPolicy = "no-referrer";
+    thumbnail.addEventListener("error", () => {
+      thumbnail.remove();
+      card.classList.add("without-thumbnail");
+    });
+  } else {
+    card.classList.add("without-thumbnail");
+  }
   const heading = document.createElement("div");
   heading.className = "video-heading";
   const kind = document.createElement("span");
@@ -811,7 +861,7 @@ function createVideoCard(video, index) {
     feedback.dataset.kind = "error";
     feedback.textContent = t("drmManifest");
     card.dataset.index = String(index);
-    card.append(heading, detail, button, feedback);
+    card.append(...(thumbnail ? [thumbnail] : []), heading, detail, button, feedback);
     return card;
   }
 
@@ -860,7 +910,7 @@ function createVideoCard(video, index) {
   });
 
   card.dataset.index = String(index);
-  card.append(heading, detail, button, feedback);
+  card.append(...(thumbnail ? [thumbnail] : []), heading, detail, button, feedback);
   return card;
 }
 
