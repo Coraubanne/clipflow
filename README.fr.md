@@ -95,7 +95,7 @@ PYTHONPATH=. .venv/bin/python -m unittest discover -s tests
 .venv/bin/pyinstaller --clean --noconfirm TubeSave.spec
 ```
 
-Le dépôt contient le moteur macOS, l’extension Chrome, le panneau Premiere UXP, les tests et l’outillage de publication. Les contributions sont bienvenues ; commencez par [CONTRIBUTING.md](CONTRIBUTING.md).
+Le dépôt contient le moteur macOS, l’extension Chrome, le panneau Premiere UXP, les tests et l’outillage de publication. Les contributions de code externes ne sont pas acceptées ; les issues publiques restent disponibles pour les signalements de bugs reproductibles. Consultez [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ClipFlow suit désormais un versionnage sémantique pour ses versions visibles. La version 2.9.1 passe par un dernier tag technique historique afin que les installations en v68 migrent sans casser la mise à jour automatique ; les tags suivants utilisent directement le format `vMAJEUR.MINEUR.CORRECTIF`.
 

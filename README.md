@@ -95,7 +95,7 @@ PYTHONPATH=. .venv/bin/python -m unittest discover -s tests
 .venv/bin/pyinstaller --clean --noconfirm TubeSave.spec
 ```
 
-The repository contains the macOS engine, Chrome extension, Premiere UXP panel, tests and release tooling. Contributions are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md).
+The repository contains the macOS engine, Chrome extension, Premiere UXP panel, tests and release tooling. External code contributions are not accepted; public issues remain available for reproducible bug reports. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ClipFlow follows semantic versioning for user-facing releases. Version 2.9.1 is distributed through one final legacy bridge tag so installations on v68 can migrate without breaking automatic updates; later tags use the `vMAJOR.MINOR.PATCH` format directly.
 

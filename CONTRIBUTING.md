@@ -1,26 +1,27 @@
-# Contributing to ClipFlow
+# Contributions to ClipFlow
 
-Thank you for helping improve ClipFlow. Contributions should keep the product focused on reliable, authorized media workflows for editors and audiovisual research teams.
+ClipFlow does not currently accept external code contributions or pull requests. Development and releases are maintained by the repository owner, and GitHub restricts pull-request creation to explicitly authorized collaborators.
 
-## Before opening an issue
+Reproducible bug reports remain welcome through GitHub Issues. Before opening an issue:
 
-- Search existing issues and test the latest release.
-- Do not post authentication cookies, signed media URLs, account data or copyrighted media samples.
-- For a site compatibility report, provide the public page URL, macOS and ClipFlow versions, expected result and sanitized error text.
-- Report security vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
-- Requests to bypass DRM, paywalls or access controls are outside the project scope and will be closed.
+- test the latest release and search existing issues;
+- provide the public page URL, macOS and ClipFlow versions, expected result and sanitized error text;
+- never publish authentication cookies, signed media URLs, account data or copyrighted media samples;
+- report security vulnerabilities privately as described in [SECURITY.md](SECURITY.md);
+- do not request DRM, paywall or access-control bypasses.
 
-## Development workflow
+This policy may change in the future at the repository owner’s discretion.
 
-1. Fork the repository and create a focused branch.
-2. Keep changes small and document user-visible behaviour in English and French where relevant.
-3. Run the full test suite:
+## En français
 
-   ```bash
-   PYTHONPATH=outputs/ytdlp outputs/ytdlp/.venv/bin/python -m unittest discover -s outputs/ytdlp/tests
-   ```
+ClipFlow n’accepte actuellement ni contributions de code externes ni pull requests. Le développement et les publications sont gérés par le propriétaire du dépôt, et GitHub limite la création de pull requests aux collaborateurs explicitement autorisés.
 
-4. Do not commit generated applications, release archives, browser profiles, cookies, logs or downloaded media.
-5. Open a pull request explaining the problem, the solution, the tests and any privacy or compatibility impact.
+Les signalements de bugs reproductibles restent possibles dans les Issues GitHub. Avant d’en ouvrir une :
 
-By contributing, you agree that your contribution may be distributed under the repository's MIT License.
+- testez la dernière version et recherchez les issues existantes ;
+- indiquez l’URL publique, les versions de macOS et ClipFlow, le résultat attendu et le message d’erreur nettoyé ;
+- ne publiez jamais de cookies d’authentification, URL média signées, données de compte ou fichiers vidéo protégés ;
+- signalez les vulnérabilités en privé selon [SECURITY.md](SECURITY.md) ;
+- ne demandez pas de contournement de DRM, paywall ou contrôle d’accès.
+
+Cette politique pourra évoluer à la seule décision du propriétaire du dépôt.
