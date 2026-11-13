@@ -791,13 +791,18 @@ def build_download_command(
         command.extend(["--referer", referer])
 
     if profile.audio_only:
+        audio_selector = (
+            "ba[format_note*=original]/ba/b"
+            if is_youtube_url(url)
+            else "bestaudio/best"
+        )
         command.extend(
             [
                 "--format-sort-force",
                 "--format-sort",
                 "lang,br",
                 "--format",
-                "bestaudio/best",
+                audio_selector,
                 "--extract-audio",
                 "--audio-format",
                 "mp3",
@@ -827,14 +832,15 @@ def build_download_command(
             [
                 "--format-sort-force",
                 "--format-sort",
-                "res,lang,br,fps",
+                "lang,res,br,fps",
             ]
         )
         # Select direct HTTPS H.264/AVC MP4 tracks first. YouTube's HLS links
         # can expire during long downloads, whereas its direct DASH tracks are
         # resumable and reliable. Keep HLS as a fallback for other sites.
         minimum_height = "[height>=720]" if is_youtube_url(url) else ""
-        direct = f"bv[ext=mp4][vcodec^=avc1]{minimum_height}[protocol^=http]+ba[ext=m4a][protocol^=http]"
+        video_direct = f"bv[ext=mp4][vcodec^=avc1]{minimum_height}[protocol^=http]"
+        direct = f"{video_direct}+ba[ext=m4a][protocol^=http]"
         direct_combined = f"b[ext=mp4][vcodec^=avc1]{minimum_height}[protocol^=http]"
         fallback = (
             f"bv[ext=mp4][vcodec^=avc1]{minimum_height}+ba[ext=m4a]/"
@@ -848,7 +854,19 @@ def build_download_command(
             f"b[ext=mp4]{minimum_height}[protocol^=http]/"
             f"b[ext=mp4]{minimum_height}"
         )
-        selector = f"{direct}/{direct_combined}/{fallback}/{generic_mp4}"
+        original_audio = ""
+        if is_youtube_url(url):
+            # YouTube can expose automatic translations as additional audio
+            # tracks. Prefer the extractor's explicit original marker first,
+            # but retain the normal choices for older videos whose metadata
+            # does not identify any track as original.
+            original_audio = (
+                f"{video_direct}+ba[ext=m4a][format_note*=original][protocol^=http]/"
+                f"bv[ext=mp4][vcodec^=avc1]{minimum_height}+ba[ext=m4a][format_note*=original]/"
+                f"bv[ext=mp4][vcodec^=avc1]{minimum_height}+ba[ext=mp4][format_note*=original]/"
+                f"b[ext=mp4][vcodec^=avc1]{minimum_height}[format_note*=original]/"
+            )
+        selector = f"{original_audio}{direct}/{direct_combined}/{fallback}/{generic_mp4}"
         command.extend(
             [
                 "--format",

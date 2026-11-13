@@ -16,12 +16,13 @@
   <main>
     <section id="settings-panel" class="settings-panel" data-i18n-aria="downloadSettings" aria-label="Réglages du téléchargement" hidden>
       <label class="destination-setting language-setting">
-        <span data-i18n="language">Langue</span>
-        <select id="language" data-i18n-aria="language" aria-label="Langue">
+        <span data-i18n="language">Langue de l’extension</span>
+        <select id="language" data-i18n-aria="language" aria-label="Langue de l’extension">
           <option value="auto" data-i18n="languageAuto">Automatique</option>
           <option value="fr">Français</option>
           <option value="en">English</option>
         </select>
+        <small data-i18n="languageHint">N’affecte pas la langue audio des vidéos</small>
       </label>
       <label class="destination-setting">
         <span data-i18n="saveTo">Enregistrer dans</span>
@@ -73,6 +74,7 @@
       <div id="videos" class="video-list"></div>
     </section>
   </main>
+  <footer id="extension-version" class="extension-version"></footer>
   <script src="popup.js"></script>
 </body>
 </html>

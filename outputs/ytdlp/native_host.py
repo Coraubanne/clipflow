@@ -429,7 +429,7 @@ def handle_message(message: object) -> dict[str, object]:
         from updater import install_release
 
         response = install_release(
-            int(message.get("release", 0)),
+            message.get("releaseTag") or int(message.get("release", 0)),
             int(message.get("archiveAssetId", 0)),
             int(message.get("checksumAssetId", 0)),
             app_bundle(),

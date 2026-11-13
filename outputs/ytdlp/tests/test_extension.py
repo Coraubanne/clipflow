@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.9.0")
+        self.assertEqual(manifest["version"], "2.9.1")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,7 +27,7 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.9.0"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.9.1"', source)
         self.assertIn("chrome.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
@@ -214,6 +214,16 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("function applyLanguage()", source)
         self.assertIn("language: activeLanguage()", source)
         self.assertIn("const language = interfaceLanguage(message?.language)", background)
+        self.assertIn("Langue de l’extension", markup)
+        self.assertIn("N’affecte pas la langue audio des vidéos", markup)
+        self.assertIn('id="extension-version"', markup)
+        self.assertIn('t("extensionVersion"', source)
+
+    def test_open_settings_are_visually_blue(self):
+        styles = (EXTENSION / "popup.css").read_text(encoding="utf-8")
+        self.assertIn('.settings-toggle[aria-expanded="true"]', styles)
+        self.assertIn("background: #0a84ff", styles)
+        self.assertIn("rgba(10, 132, 255, .16)", styles)
 
     def test_direct_webm_requires_confirmation_before_conversion_download(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")

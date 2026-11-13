@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.9.0";
+const EXPECTED_EXTENSION_VERSION = "2.9.1";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
@@ -19,7 +19,8 @@ const DEFAULT_SETTINGS = {
 const UI_TEXT = {
   fr: {
     openSettings: "Ouvrir les réglages", closeSettings: "Fermer les réglages", settings: "Réglages",
-    downloadSettings: "Réglages du téléchargement", language: "Langue", languageAuto: "Automatique",
+    downloadSettings: "Réglages du téléchargement", language: "Langue de l’extension", languageAuto: "Automatique",
+    languageHint: "N’affecte pas la langue audio des vidéos", extensionVersion: "Extension {version}",
     saveTo: "Enregistrer dans", destinationFolder: "Dossier de destination", downloads: "Téléchargements",
     movies: "Films", desktop: "Bureau", otherFolder: "Autre dossier…", chosenFolder: "Dossier choisi",
     completionSoundTitle: "Jouer un son à la fin du téléchargement", completionSound: "Son de fin",
@@ -52,7 +53,8 @@ const UI_TEXT = {
   },
   en: {
     openSettings: "Open settings", closeSettings: "Close settings", settings: "Settings",
-    downloadSettings: "Download settings", language: "Language", languageAuto: "Automatic",
+    downloadSettings: "Download settings", language: "Extension language", languageAuto: "Automatic",
+    languageHint: "Does not change the videos’ audio language", extensionVersion: "Extension {version}",
     saveTo: "Save to", destinationFolder: "Destination folder", downloads: "Downloads",
     movies: "Movies", desktop: "Desktop", otherFolder: "Other folder…", chosenFolder: "Selected folder",
     completionSoundTitle: "Play a sound when the download finishes", completionSound: "Completion sound",
@@ -104,6 +106,7 @@ const progressDetail = document.getElementById("progress-detail");
 const progressPercent = document.getElementById("progress-percent");
 const checkUpdate = document.getElementById("check-update");
 const updateStatus = document.getElementById("update-status");
+const extensionVersion = document.getElementById("extension-version");
 let displayedProgress = 0;
 let progressAnimation = null;
 let progressPoll = null;
@@ -131,6 +134,7 @@ function applyLanguage() {
   document.querySelectorAll("[data-i18n-aria]").forEach((element) => {
     element.setAttribute("aria-label", t(element.dataset.i18nAria));
   });
+  extensionVersion.textContent = t("extensionVersion", { version: chrome.runtime.getManifest().version });
   if (lastUpdateResponse) displayUpdate(lastUpdateResponse);
 }
 
@@ -153,11 +157,11 @@ function displayUpdate(response) {
   availableUpdate = response.available ? response : null;
   settingsToggle.classList.toggle("update-ready", Boolean(availableUpdate));
   if (availableUpdate) {
-    checkUpdate.textContent = t("installVersion", { version: response.latestRelease });
+    checkUpdate.textContent = t("installVersion", { version: response.latestVersion || response.latestRelease });
     updateStatus.textContent = t("updateAvailable");
   } else {
     checkUpdate.textContent = t("checkUpdate");
-    updateStatus.textContent = t("upToDate", { version: response.currentRelease });
+    updateStatus.textContent = t("upToDate", { version: response.currentVersion || response.currentRelease });
   }
 }
 
@@ -198,6 +202,7 @@ async function installAvailableUpdate() {
     const response = await runtimeMessage({
       type: "install_update",
       release: availableUpdate.latestRelease,
+      releaseTag: availableUpdate.releaseTag,
       archiveAssetId: availableUpdate.archiveAssetId,
       checksumAssetId: availableUpdate.checksumAssetId,
       language: activeLanguage(),

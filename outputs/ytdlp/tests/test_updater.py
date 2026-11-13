@@ -11,7 +11,11 @@ from updater import (
     UpdateError,
     chrome_extension_paths,
     github_token,
+    latest_release,
+    normalized_release_tag,
     parse_release_number,
+    parse_semantic_version,
+    release_is_newer,
     safe_extract,
     verify_checksum,
     _request,
@@ -24,6 +28,34 @@ class UpdaterTests(unittest.TestCase):
         for value in ("67", "v0", "v67-beta", "../v67"):
             with self.assertRaises(UpdateError):
                 parse_release_number(value)
+
+    def test_semantic_versions_are_strict_and_ordered(self):
+        self.assertEqual(parse_semantic_version("2.9.1"), (2, 9, 1))
+        self.assertEqual(normalized_release_tag("v2.10.0"), "v2.10.0")
+        self.assertFalse(release_is_newer("v2.9.1"))
+        self.assertTrue(release_is_newer("v2.9.2"))
+        self.assertTrue(release_is_newer("v3.0.0"))
+        for value in ("2.9", "v2.09.1", "v2.9.1-beta", "../v2.9.2"):
+            with self.assertRaises(UpdateError):
+                normalized_release_tag(value)
+
+    def test_latest_release_accepts_future_semantic_tag(self):
+        payload = {
+            "tag_name": "v2.9.2",
+            "name": "ClipFlow 2.9.2",
+            "draft": False,
+            "prerelease": False,
+            "assets": [
+                {"id": 101, "name": "ClipFlow-complet-v2.9.2.zip"},
+                {"id": 102, "name": "ClipFlow-complet-v2.9.2.zip.sha256"},
+            ],
+        }
+        with patch("updater._github_json", return_value=payload):
+            result = latest_release(Path("/nonexistent"))
+        self.assertTrue(result["available"])
+        self.assertEqual(result["releaseTag"], "v2.9.2")
+        self.assertEqual(result["latestVersion"], "2.9.2")
+        self.assertEqual(result["archiveAssetId"], 101)
 
     def test_github_token_is_read_without_exposing_configuration(self):
         with tempfile.TemporaryDirectory() as directory:

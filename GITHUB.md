@@ -19,7 +19,7 @@ Le dépôt GitHub est public. Toute release doit rester reproductible, document�
    scripts/publish_github_release.sh
    ```
 
-Le script pousse la branche `main`, crée un tag `vNUMERO` et ajoute le ZIP ainsi que son fichier `.sha256` à une Release GitHub. L’empreinte est obligatoire pour que l’installateur automatique accepte la release. Le script refuse de publier un dossier qui contient des modifications non enregistrées.
+Le script pousse la branche `main`, utilise le champ `release_tag` de `PROJECT_VERSION.json` et ajoute le ZIP ainsi que son fichier `.sha256` à une Release GitHub nommée avec la version produit. Après le tag de transition `v69` associé à ClipFlow 2.9.1, les tags suivent le format sémantique `vMAJEUR.MINEUR.CORRECTIF`. L’empreinte est obligatoire pour que l’installateur automatique accepte la release. Le script refuse de publier un dossier qui contient des modifications non enregistrées.
 
 ## Sauvegarde hors GitHub
 

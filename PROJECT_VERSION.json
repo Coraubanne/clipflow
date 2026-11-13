@@ -1,13 +1,15 @@
 {
   "project": "ClipFlow",
   "backup_date": "2026-11-13",
-  "release": 68,
-  "application_version": "1.49",
-  "application_build": 50,
-  "chrome_extension_version": "2.9.0",
+  "release": 69,
+  "release_tag": "v69",
+  "version": "2.9.1",
+  "application_version": "2.9.1",
+  "application_build": 51,
+  "chrome_extension_version": "2.9.1",
   "premiere_extension_version": "1.0.4",
   "yt_dlp_version": "2026.10.21",
   "python_version": "3.13.0",
   "platform": "macOS Apple Silicon ARM64",
-  "distribution_archive": "ClipFlow-complet-v68.zip"
+  "distribution_archive": "ClipFlow-complet-v69.zip"
 }

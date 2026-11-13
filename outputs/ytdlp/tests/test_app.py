@@ -104,14 +104,29 @@ class TubeSaveTests(unittest.TestCase):
                 Path("/tmp/ffmpeg"),
                 Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
             )
-        self.assertIn("res,lang,br,fps", command)
+        self.assertIn("lang,res,br,fps", command)
         self.assertFalse(any("res:" in item for item in command))
         self.assertEqual(command[command.index("--merge-output-format") + 1], "mp4")
         self.assertNotIn("--remux-video", command)
         selector = command[command.index("--format") + 1]
+        self.assertIn("ba[ext=m4a][format_note*=original]", selector)
+        self.assertLess(selector.index("[format_note*=original]"), selector.index("+ba[ext=m4a][protocol^=http]"))
         self.assertIn("[ext=mp4]", selector)
         self.assertIn("[vcodec^=avc1]", selector)
         self.assertTrue(selector.startswith("bv[ext=mp4][vcodec^=avc1][height>=720][protocol^=http]"))
+
+    def test_youtube_audio_only_prefers_original_track_with_safe_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            command = build_download_command(
+                ["python", "-m", "yt_dlp"],
+                "https://www.youtube.com/watch?v=abc",
+                Path(directory),
+                PROFILES[1],
+                Path("/tmp/ffmpeg"),
+                None,
+            )
+        selector = command[command.index("--format") + 1]
+        self.assertEqual(selector, "ba[format_note*=original]/ba/b")
 
     def test_default_is_unlimited_compatible_mp4(self):
         self.assertEqual(PROFILES[0].mode, "compatible")
@@ -146,7 +161,7 @@ class TubeSaveTests(unittest.TestCase):
             Path("/tmp/ffmpeg"),
             Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
         )
-        self.assertIn("res,lang,br,fps", command)
+        self.assertIn("lang,res,br,fps", command)
         self.assertFalse(any("res:1080" in item for item in command))
         self.assertFalse(any("vcodec:h264" in item for item in command))
         self.assertFalse(any("hevc" in item.lower() for item in command))
@@ -158,6 +173,10 @@ class TubeSaveTests(unittest.TestCase):
         selector = command[command.index("--format") + 1]
         self.assertEqual(
             selector,
+            "bv[ext=mp4][vcodec^=avc1][height>=720][protocol^=http]+ba[ext=m4a][format_note*=original][protocol^=http]/"
+            "bv[ext=mp4][vcodec^=avc1][height>=720]+ba[ext=m4a][format_note*=original]/"
+            "bv[ext=mp4][vcodec^=avc1][height>=720]+ba[ext=mp4][format_note*=original]/"
+            "b[ext=mp4][vcodec^=avc1][height>=720][format_note*=original]/"
             "bv[ext=mp4][vcodec^=avc1][height>=720][protocol^=http]+ba[ext=m4a][protocol^=http]/"
             "b[ext=mp4][vcodec^=avc1][height>=720][protocol^=http]/"
             "bv[ext=mp4][vcodec^=avc1][height>=720]+ba[ext=m4a]/"

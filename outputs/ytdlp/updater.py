@@ -25,7 +25,8 @@ import certifi
 
 GITHUB_OWNER = "Coraubanne"
 GITHUB_REPOSITORY = "clipflow"
-CURRENT_RELEASE = 68
+CURRENT_RELEASE = 69
+CURRENT_VERSION = "2.9.1"
 EXTENSION_ID = "emfjpphkcgnjldilcnieaoppmfpfkhfg"
 PREMIERE_PLUGIN_ID = "fr.clipflow.premiere.bridge"
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
@@ -58,6 +59,28 @@ def parse_release_number(tag: object) -> int:
     return int(match.group(1))
 
 
+def parse_semantic_version(value: object) -> tuple[int, int, int]:
+    match = re.fullmatch(r"(?:v)?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", str(value or ""))
+    if not match:
+        raise UpdateError("La version publiée sur GitHub est invalide.")
+    return tuple(map(int, match.groups()))
+
+
+def normalized_release_tag(value: object) -> str:
+    raw = str(value or "")
+    if re.fullmatch(r"v[1-9][0-9]*", raw):
+        return raw
+    if re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", raw):
+        return raw
+    raise UpdateError("La version publiée sur GitHub est invalide.")
+
+
+def release_is_newer(tag: str) -> bool:
+    if re.fullmatch(r"v[1-9][0-9]*", tag):
+        return parse_release_number(tag) > CURRENT_RELEASE
+    return parse_semantic_version(tag) > parse_semantic_version(CURRENT_VERSION)
+
+
 def _read_gh_token(home: Path) -> str:
     configured = os.environ.get("CLIPFLOW_GITHUB_TOKEN", "").strip()
     if configured:
@@ -87,7 +110,7 @@ def _opener() -> urllib.request.OpenerDirector:
 def _request(url: str, token: str, accept: str) -> urllib.request.Request:
     headers = {
         "Accept": accept,
-        "User-Agent": f"ClipFlow/{CURRENT_RELEASE}",
+        "User-Agent": f"ClipFlow/{CURRENT_VERSION}",
         "X-GitHub-Api-Version": "2022-11-28",
     }
     if token:
@@ -114,8 +137,8 @@ def _github_json(url: str, token: str) -> object:
         raise UpdateError("Impossible de joindre GitHub. Vérifiez la connexion Internet.") from None
 
 
-def _release_assets(release: dict[str, object], number: int) -> tuple[dict[str, object], dict[str, object]]:
-    expected_zip = f"ClipFlow-complet-v{number}.zip"
+def _release_assets(release: dict[str, object], tag: str) -> tuple[dict[str, object], dict[str, object]]:
+    expected_zip = f"ClipFlow-complet-{tag}.zip"
     expected_sum = f"{expected_zip}.sha256"
     assets = release.get("assets")
     if not isinstance(assets, list):
@@ -138,16 +161,31 @@ def latest_release(home: Path | None = None) -> dict[str, object]:
     payload = _github_json(url, token)
     if not isinstance(payload, dict) or payload.get("draft") or payload.get("prerelease"):
         raise UpdateError("Aucune release stable de ClipFlow n’est disponible.")
-    number = parse_release_number(payload.get("tag_name"))
+    tag = normalized_release_tag(payload.get("tag_name"))
+    legacy_number = parse_release_number(tag) if re.fullmatch(r"v[1-9][0-9]*", tag) else None
+    published_version = (
+        str(payload.get("name") or "").removeprefix("ClipFlow ").strip()
+        if legacy_number is not None
+        else tag.removeprefix("v")
+    )
+    if legacy_number is not None:
+        try:
+            parse_semantic_version(published_version)
+        except UpdateError:
+            published_version = str(legacy_number)
+    available = release_is_newer(tag)
     result: dict[str, object] = {
         "ok": True,
         "currentRelease": CURRENT_RELEASE,
-        "latestRelease": number,
-        "available": number > CURRENT_RELEASE,
-        "version": str(payload.get("name") or payload.get("tag_name") or f"v{number}")[:100],
+        "currentVersion": CURRENT_VERSION,
+        "latestRelease": legacy_number if legacy_number is not None else published_version,
+        "latestVersion": published_version,
+        "releaseTag": tag,
+        "available": available,
+        "version": str(payload.get("name") or tag)[:100],
     }
-    if number > CURRENT_RELEASE:
-        archive, checksum = _release_assets(payload, number)
+    if available:
+        archive, checksum = _release_assets(payload, tag)
         result["archiveAssetId"] = int(archive.get("id", 0))
         result["checksumAssetId"] = int(checksum.get("id", 0))
     return result
@@ -262,9 +300,14 @@ def _read_json(path: Path) -> dict[str, object]:
     return value
 
 
-def validate_bundle(root: Path, expected_release: int) -> dict[str, Path]:
+def validate_bundle(root: Path, expected_release: int | str) -> dict[str, Path]:
     metadata = _read_json(root / "PROJECT_VERSION.json")
-    if metadata.get("release") != expected_release:
+    expected_matches = (
+        metadata.get("release") == expected_release
+        if isinstance(expected_release, int)
+        else metadata.get("version") == normalized_release_tag(expected_release).removeprefix("v")
+    )
+    if not expected_matches:
         raise UpdateError("Le numéro de l’archive ne correspond pas à la release GitHub.")
 
     app = root / "ClipFlow.app"
@@ -352,26 +395,27 @@ def _atomic_replace(source: Path, target: Path) -> Path | None:
 
 
 def install_release(
-    number: int,
+    release: int | str,
     archive_asset_id: int,
     checksum_asset_id: int,
     current_app: Path,
     home: Path | None = None,
 ) -> dict[str, object]:
-    if number <= CURRENT_RELEASE:
-        return {"ok": True, "installed": False, "release": CURRENT_RELEASE}
+    tag = normalized_release_tag(f"v{release}" if isinstance(release, int) else release)
+    if not release_is_newer(tag):
+        return {"ok": True, "installed": False, "release": CURRENT_RELEASE, "version": CURRENT_VERSION}
     user_home = (home or Path.home()).resolve()
     token = github_token(user_home)
     published = latest_release(user_home)
     if (
-        published.get("latestRelease") != number
+        published.get("releaseTag") != tag
         or published.get("archiveAssetId") != archive_asset_id
         or published.get("checksumAssetId") != checksum_asset_id
     ):
         raise UpdateError("La release GitHub a changé. Relancez la recherche de mise à jour.")
     with tempfile.TemporaryDirectory(prefix="clipflow-update-") as temporary:
         workspace = Path(temporary)
-        archive = workspace / f"ClipFlow-complet-v{number}.zip"
+        archive = workspace / f"ClipFlow-complet-{tag}.zip"
         checksum = workspace / f"{archive.name}.sha256"
         _download_asset(archive_asset_id, archive, token, MAX_ARCHIVE_BYTES)
         _download_asset(checksum_asset_id, checksum, token, 4096)
@@ -380,7 +424,8 @@ def install_release(
         extracted.mkdir()
         safe_extract(archive, extracted)
         root = extracted / "ClipFlow complet"
-        components = validate_bundle(root, number)
+        expected_identity: int | str = parse_release_number(tag) if re.fullmatch(r"v[1-9][0-9]*", tag) else tag
+        components = validate_bundle(root, expected_identity)
 
         extension_targets = chrome_extension_paths(user_home)
         if not extension_targets:
@@ -447,6 +492,7 @@ def install_release(
     return {
         "ok": True,
         "installed": True,
-        "release": number,
+        "release": published.get("latestRelease"),
+        "version": published.get("latestVersion"),
         "message": "ClipFlow a été mis à jour. Redémarrez Premiere Pro s’il était ouvert.",
     }

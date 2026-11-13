@@ -29,6 +29,7 @@ It is designed for video editors, audiovisual documentalists, archive researcher
 - Detects compatible page videos, direct media, HLS/DASH streams and embedded players.
 - Selects the highest available MP4/H.264 quality, including 4K when a compatible source exists.
 - Preserves the original audio language whenever the source exposes it.
+- Labels the interface language separately from video audio and displays the installed extension version.
 - Offers an audio-only MP3 mode.
 - Keeps temporary fragments in a hidden workspace and exposes only completed files.
 - Runs as an invisible macOS background agent; Chrome is the main interface.
@@ -93,6 +94,8 @@ PYTHONPATH=. .venv/bin/python -m unittest discover -s tests
 ```
 
 The repository contains the macOS engine, Chrome extension, Premiere UXP panel, tests and release tooling. Contributions are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md).
+
+ClipFlow follows semantic versioning for user-facing releases. Version 2.9.1 is distributed through one final legacy bridge tag so installations on v68 can migrate without breaking automatic updates; later tags use the `vMAJOR.MINOR.PATCH` format directly.
 
 ## Credits
 

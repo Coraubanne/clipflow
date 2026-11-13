@@ -471,6 +471,7 @@ async function handleMessage(message, sender) {
     return sendNativeMessage({
       action: "install_update",
       release: Number(message.release),
+      releaseTag: typeof message.releaseTag === "string" ? message.releaseTag.slice(0, 32) : "",
       archiveAssetId: Number(message.archiveAssetId),
       checksumAssetId: Number(message.checksumAssetId),
       language,

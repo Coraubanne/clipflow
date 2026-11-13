@@ -5,9 +5,9 @@ script_dir="${0:A:h}"
 project_dir="${script_dir:h}"
 cd "${project_dir}"
 
-release_number="$(sed -n 's/.*"release"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' PROJECT_VERSION.json | head -n 1)"
-if [[ -z "${release_number}" ]]; then
-  print -u2 "Le numéro release manque dans PROJECT_VERSION.json."
+release_tag="$(sed -n 's/.*"release_tag"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' PROJECT_VERSION.json | head -n 1)"
+if [[ -z "${release_tag}" ]]; then
+  print -u2 "Le tag release manque dans PROJECT_VERSION.json."
   exit 1
 fi
 
@@ -43,7 +43,7 @@ mkdir -p "${bundle}"
 mkdir -p "${bundle}/LICENSES"
 /usr/bin/ditto "LICENSES/GPL-2.0-or-later.txt" "${bundle}/LICENSES/GPL-2.0-or-later.txt"
 
-archive="outputs/ClipFlow-complet-v${release_number}.zip"
+archive="outputs/ClipFlow-complet-${release_tag}.zip"
 rm -f "${archive}" "${archive}.sha256"
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "${bundle}" "${archive}"
 unzip -tq "${archive}"

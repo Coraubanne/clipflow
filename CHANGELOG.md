@@ -2,6 +2,14 @@
 
 All notable user-facing changes are documented here.
 
+## 2.9.1 — 2026-11-13
+
+- Gave the expanded settings area a distinct blue treatment while keeping the compact Apple-style layout.
+- Clarified that the language selector controls the extension interface, not video audio.
+- Added the extension version at the bottom of the popup.
+- Made YouTube explicitly prefer tracks marked as original audio, with a safe fallback when metadata is missing.
+- Started the transition from legacy numeric releases to professional semantic versioning.
+
 ## v68 — 2026-11-13
 
 - Added an Automatic, Français and English interface-language selector to the Chrome extension.

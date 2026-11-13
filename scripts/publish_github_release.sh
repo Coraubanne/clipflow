@@ -17,16 +17,17 @@ fi
 
 "${gh_bin}" auth status >/dev/null
 
-release_number="$(sed -n 's/.*"release"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' PROJECT_VERSION.json | head -n 1)"
-if [[ -z "${release_number}" ]]; then
-  print -u2 "Le numéro release manque dans PROJECT_VERSION.json."
+release_tag="$(sed -n 's/.*"release_tag"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' PROJECT_VERSION.json | head -n 1)"
+product_version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' PROJECT_VERSION.json | head -n 1)"
+if [[ -z "${release_tag}" || -z "${product_version}" ]]; then
+  print -u2 "La version ou le tag release manque dans PROJECT_VERSION.json."
   exit 1
 fi
 
-tag="${1:-v${release_number}}"
-archive="outputs/ClipFlow-complet-v${release_number}.zip"
+tag="${1:-${release_tag}}"
+archive="outputs/ClipFlow-complet-${release_tag}.zip"
 checksum="${archive}.sha256"
-release_notes="docs/releases/v${release_number}.md"
+release_notes="docs/releases/${release_tag}.md"
 
 if [[ ! -f "${archive}" ]]; then
   print -u2 "Archive introuvable : ${archive}"
@@ -54,11 +55,11 @@ if "${gh_bin}" release view "${tag}" >/dev/null 2>&1; then
 else
   if [[ -f "${release_notes}" ]]; then
     "${gh_bin}" release create "${tag}" "${archive}" "${checksum}" \
-      --title "ClipFlow ${tag}" \
+      --title "ClipFlow ${product_version}" \
       --notes-file "${release_notes}"
   else
     "${gh_bin}" release create "${tag}" "${archive}" "${checksum}" \
-      --title "ClipFlow ${tag}" \
+      --title "ClipFlow ${product_version}" \
       --notes "Version complète de ClipFlow. Le ZIP contient l’application macOS, l’extension Chrome et le module Premiere Pro."
   fi
 fi
@@ -70,7 +71,7 @@ if [[ "$("${gh_bin}" release view "${tag}" --json isDraft --jq '.isDraft')" == "
   "${gh_bin}" release edit "${tag}" \
     --draft=false \
     --tag "${tag}" \
-    --title "ClipFlow ${tag}"
+    --title "ClipFlow ${product_version}"
 fi
 
 print "Version ${tag} publiée avec ${archive} et son empreinte SHA-256."
