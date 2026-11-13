@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.12.0")
+        self.assertEqual(manifest["version"], "2.12.1")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,12 +27,17 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.12.0"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.12.1"', source)
         self.assertIn("chrome.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
         self.assertIn('return "DASH"', source)
         self.assertIn("allFrames: true", source)
+
+    def test_update_cache_is_invalidated_after_an_extension_upgrade(self):
+        source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
+        self.assertIn("const installedVersion = chrome.runtime.getManifest().version", source)
+        self.assertIn('String(cached.currentVersion || "") === installedVersion', source)
 
     def test_video_cards_show_available_thumbnails(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")

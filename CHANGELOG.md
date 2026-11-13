@@ -2,6 +2,11 @@
 
 All notable user-facing changes are documented here.
 
+## 2.12.1 — 2026-11-13
+
+- Invalidated the cached update status whenever the installed Chrome extension version changes.
+- Prevented the settings panel from displaying the previous ClipFlow version after a successful update.
+
 ## 2.12.0 — 2026-11-13
 
 - Redesigned the Chrome extension around a clearer visual hierarchy, larger controls and more readable video cards.

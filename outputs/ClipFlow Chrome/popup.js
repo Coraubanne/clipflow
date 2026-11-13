@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.12.0";
+const EXPECTED_EXTENSION_VERSION = "2.12.1";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
@@ -172,7 +172,12 @@ async function findUpdate(manual = false) {
   if (!manual) {
     const stored = await chrome.storage.local.get("clipFlowUpdateCheck");
     const cached = stored.clipFlowUpdateCheck;
-    if (cached && Date.now() - Number(cached.checkedAt || 0) < UPDATE_CHECK_INTERVAL) {
+    const installedVersion = chrome.runtime.getManifest().version;
+    if (
+      cached
+      && String(cached.currentVersion || "") === installedVersion
+      && Date.now() - Number(cached.checkedAt || 0) < UPDATE_CHECK_INTERVAL
+    ) {
       displayUpdate(cached);
       return;
     }
