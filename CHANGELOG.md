@@ -2,6 +2,10 @@
 
 All notable user-facing changes are documented here.
 
+## 2.11.1 — 2026-11-13
+
+- Published a maintenance release with no functional change to validate the complete in-extension update workflow.
+
 ## 2.11.0 — 2026-11-13
 
 - Standardized finished filenames as `Channel — Video title [identifier].extension`.
