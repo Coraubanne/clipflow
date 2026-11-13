@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.11.1")
+        self.assertEqual(manifest["version"], "2.12.0")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,7 +27,7 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.11.1"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.12.0"', source)
         self.assertIn("chrome.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
@@ -49,8 +49,8 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("thumbnail.addEventListener(\"error\"", source)
         self.assertIn(".video-thumbnail", styles)
         self.assertIn("object-fit: cover", styles)
-        self.assertIn("width: 88px", styles)
-        self.assertIn("max-height: 260px", styles)
+        self.assertIn("width: 108px", styles)
+        self.assertIn("max-height: 360px", styles)
 
     def test_popup_sends_page_title_for_generic_stream_filenames(self):
         popup = (EXTENSION / "popup.js").read_text(encoding="utf-8")
@@ -88,7 +88,9 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("resumeActiveJobMonitors()", background)
         self.assertIn("progress: response.progress", background)
         self.assertIn("updateJobBadge(tabId, response)", background)
-        self.assertIn("width: 300px", styles)
+        self.assertIn('id="progress-fill"', markup)
+        self.assertIn("progressFill.style.width", source)
+        self.assertIn("width: 356px", styles)
 
     def test_popup_uses_best_quality_automatically_with_audio_only_checkbox(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
@@ -139,6 +141,9 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn('value="downloads"', markup)
         self.assertIn('value="premiere"', markup)
         self.assertIn('value="choose"', markup)
+        self.assertNotIn('value="movies"', markup)
+        self.assertNotIn('value="desktop"', markup)
+        self.assertIn('["downloads", "premiere", "custom"]', source)
         self.assertIn("Audio uniquement", markup)
         self.assertIn("MP3 sans vidéo", markup)
         self.assertNotIn('id="choose-folder"', markup)
@@ -149,8 +154,9 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_uses_soft_shadows_without_card_outlines(self):
         styles = (EXTENSION / "popup.css").read_text(encoding="utf-8")
-        self.assertIn("--shadow-card", styles)
+        self.assertIn("--shadow-panel", styles)
         self.assertIn("--shadow-control", styles)
+        self.assertIn("backdrop-filter: blur(22px)", styles)
         self.assertNotIn("border: 1px", styles)
         self.assertNotIn("border-color:", styles)
 
@@ -241,8 +247,8 @@ class ChromeExtensionTests(unittest.TestCase):
     def test_open_settings_are_visually_blue(self):
         styles = (EXTENSION / "popup.css").read_text(encoding="utf-8")
         self.assertIn('.settings-toggle[aria-expanded="true"]', styles)
-        self.assertIn("background: #0a84ff", styles)
-        self.assertIn("rgba(10, 132, 255, .16)", styles)
+        self.assertIn("linear-gradient(145deg, #2996ff", styles)
+        self.assertIn("rgba(24, 132, 255, .16)", styles)
 
     def test_direct_webm_requires_confirmation_before_conversion_download(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")

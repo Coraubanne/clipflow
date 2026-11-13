@@ -2,6 +2,14 @@
 
 All notable user-facing changes are documented here.
 
+## 2.12.0 — 2026-11-13
+
+- Redesigned the Chrome extension around a clearer visual hierarchy, larger controls and more readable video cards.
+- Added a restrained translucent monochrome treatment with soft blue gradients, native dark mode and reduced-motion support.
+- Enlarged thumbnails and added a visual progress track while preserving the numeric percentage.
+- Simplified destinations to Downloads, Premiere Pro and a custom folder; legacy Movies or Desktop choices migrate to Downloads.
+- Updated yt-dlp, FFmpeg packaging and the Brotli, Pillow and Setuptools dependencies to their current security-fixed versions.
+
 ## 2.11.1 — 2026-11-13
 
 - Published a maintenance release with no functional change to validate the complete in-extension update workflow.

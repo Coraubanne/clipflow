@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.11.1";
+const EXPECTED_EXTENSION_VERSION = "2.12.0";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
@@ -19,10 +19,11 @@ const DEFAULT_SETTINGS = {
 const UI_TEXT = {
   fr: {
     openSettings: "Ouvrir les réglages", closeSettings: "Fermer les réglages", settings: "Réglages",
+    webMedia: "Médias web", settingsHint: "Personnalisez ClipFlow",
     downloadSettings: "Réglages du téléchargement", language: "Langue de l’extension", languageAuto: "Automatique",
     extensionVersion: "Extension {version}",
     saveTo: "Enregistrer dans", destinationFolder: "Dossier de destination", downloads: "Téléchargements",
-    movies: "Films", desktop: "Bureau", otherFolder: "Autre dossier…", chosenFolder: "Dossier choisi",
+    otherFolder: "Autre dossier…", chosenFolder: "Dossier choisi",
     completionSoundTitle: "Jouer un son à la fin du téléchargement", completionSound: "Son de fin",
     whenReady: "Quand le fichier est prêt", checkUpdate: "Chercher une mise à jour",
     updateHint: "ClipFlow vérifie les releases GitHub sécurisées.", fileOption: "Option du fichier",
@@ -53,10 +54,11 @@ const UI_TEXT = {
   },
   en: {
     openSettings: "Open settings", closeSettings: "Close settings", settings: "Settings",
+    webMedia: "Web media", settingsHint: "Customize ClipFlow",
     downloadSettings: "Download settings", language: "Extension language", languageAuto: "Automatic",
     extensionVersion: "Extension {version}",
     saveTo: "Save to", destinationFolder: "Destination folder", downloads: "Downloads",
-    movies: "Movies", desktop: "Desktop", otherFolder: "Other folder…", chosenFolder: "Selected folder",
+    otherFolder: "Other folder…", chosenFolder: "Selected folder",
     completionSoundTitle: "Play a sound when the download finishes", completionSound: "Completion sound",
     whenReady: "When the file is ready", checkUpdate: "Check for updates",
     updateHint: "ClipFlow checks secure GitHub releases.", fileOption: "File option",
@@ -104,6 +106,7 @@ const progressSection = document.getElementById("download-progress");
 const progressLabel = document.getElementById("progress-label");
 const progressDetail = document.getElementById("progress-detail");
 const progressPercent = document.getElementById("progress-percent");
+const progressFill = document.getElementById("progress-fill");
 const checkUpdate = document.getElementById("check-update");
 const updateStatus = document.getElementById("update-status");
 const extensionVersion = document.getElementById("extension-version");
@@ -244,13 +247,17 @@ async function loadSettings() {
     completionSound: previous.completionSound !== false,
   };
   delete settings.quality;
+  if (!["downloads", "premiere", "custom"].includes(settings.destination)) {
+    settings.destination = "downloads";
+    settings.destinationPath = "";
+  }
   audioOnly.checked = settings.audioOnly;
   completionSound.checked = settings.completionSound;
   language.value = ["auto", "fr", "en"].includes(settings.language) ? settings.language : "auto";
   settings.language = language.value;
   applyLanguage();
   if (settings.destination !== "custom") {
-    const labels = { downloads: "downloads", movies: "movies", desktop: "desktop" };
+    const labels = { downloads: "downloads" };
     settings.destinationLabel = labels[settings.destination]
       ? t(labels[settings.destination])
       : "Premiere Pro";
@@ -808,12 +815,14 @@ function animateProgress(target) {
   const safeTarget = Math.max(1, Math.min(100, Math.round(Number(target) || 1)));
   if (safeTarget <= displayedProgress) {
     progressPercent.textContent = `${displayedProgress} %`;
+    progressFill.style.width = `${displayedProgress}%`;
     return;
   }
   if (progressAnimation) clearInterval(progressAnimation);
   progressAnimation = setInterval(() => {
     displayedProgress = Math.min(safeTarget, displayedProgress + 1);
     progressPercent.textContent = `${displayedProgress} %`;
+    progressFill.style.width = `${displayedProgress}%`;
     if (displayedProgress >= safeTarget) {
       clearInterval(progressAnimation);
       progressAnimation = null;
@@ -828,6 +837,7 @@ function showProgress(jobId, tabId, destinationLabel = t("downloads"), button = 
   progressDetail.textContent = t("preparing");
   displayedProgress = Math.max(1, displayedProgress);
   progressPercent.textContent = `${displayedProgress} %`;
+  progressFill.style.width = `${displayedProgress}%`;
   animateProgress(displayedProgress);
   if (progressPoll) clearTimeout(progressPoll);
 
@@ -1194,7 +1204,7 @@ completionSound.addEventListener("change", async () => {
 language.addEventListener("change", async () => {
   settings.language = language.value;
   if (settings.destination !== "custom") {
-    const labels = { downloads: "downloads", movies: "movies", desktop: "desktop" };
+    const labels = { downloads: "downloads" };
     settings.destinationLabel = labels[settings.destination]
       ? t(labels[settings.destination])
       : "Premiere Pro";

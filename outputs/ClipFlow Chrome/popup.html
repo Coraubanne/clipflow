@@ -7,14 +7,27 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header>
-    <img class="brand-icon" src="icons/icon-48.png" alt="">
-    <h1>ClipFlow</h1>
-    <button id="settings-toggle" class="settings-toggle" type="button" data-i18n-aria="openSettings" aria-label="Ouvrir les réglages" aria-controls="settings-panel" aria-expanded="false" data-i18n-title="settings" title="Réglages">⚙︎</button>
+  <header class="app-header">
+    <div class="brand">
+      <img class="brand-icon" src="icons/icon-48.png" alt="">
+      <div class="brand-copy">
+        <h1>ClipFlow</h1>
+        <span data-i18n="webMedia">Médias web</span>
+      </div>
+    </div>
+    <button id="settings-toggle" class="settings-toggle" type="button" data-i18n-aria="openSettings" aria-label="Ouvrir les réglages" aria-controls="settings-panel" aria-expanded="false" data-i18n-title="settings" title="Réglages">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 8.25A3.75 3.75 0 1 0 12 15.75 3.75 3.75 0 0 0 12 8.25Zm8.1 4.88v-2.26l-2.08-.74a6.7 6.7 0 0 0-.63-1.51l.95-1.99-1.6-1.6-1.99.95a6.7 6.7 0 0 0-1.51-.63L12.5 3.27h-2.26L9.5 5.35a6.7 6.7 0 0 0-1.51.63L6 5.03l-1.6 1.6.95 1.99a6.7 6.7 0 0 0-.63 1.51l-2.08.74v2.26l2.08.74c.15.53.36 1.03.63 1.51l-.95 1.99 1.6 1.6 1.99-.95c.48.27.98.48 1.51.63l.74 2.08h2.26l.74-2.08a6.7 6.7 0 0 0 1.51-.63l1.99.95 1.6-1.6-.95-1.99c.27-.48.48-.98.63-1.51l2.08-.74Z"/>
+      </svg>
+    </button>
   </header>
 
   <main>
     <section id="settings-panel" class="settings-panel" data-i18n-aria="downloadSettings" aria-label="Réglages du téléchargement" hidden>
+      <div class="panel-heading">
+        <strong data-i18n="settings">Réglages</strong>
+        <small data-i18n="settingsHint">Personnalisez ClipFlow</small>
+      </div>
       <label class="destination-setting language-setting">
         <span data-i18n="language">Langue de l’extension</span>
         <select id="language" data-i18n-aria="language" aria-label="Langue de l’extension">
@@ -27,8 +40,6 @@
         <span data-i18n="saveTo">Enregistrer dans</span>
         <select id="destination" data-i18n-aria="destinationFolder" aria-label="Dossier de destination">
           <option value="downloads" data-i18n="downloads">Téléchargements</option>
-          <option value="movies" data-i18n="movies">Films</option>
-          <option value="desktop" data-i18n="desktop">Bureau</option>
           <option value="premiere">Premiere Pro</option>
           <option value="choose" data-i18n="otherFolder">Autre dossier…</option>
         </select>
@@ -57,11 +68,12 @@
     </section>
 
     <section id="download-progress" class="download-progress" hidden aria-live="polite">
-      <div>
+      <div class="progress-copy">
         <span id="progress-label" data-i18n="download">Téléchargement</span>
         <small id="progress-detail" data-i18n="preparing">Préparation…</small>
       </div>
       <strong id="progress-percent">1 %</strong>
+      <div class="progress-track" aria-hidden="true"><span id="progress-fill"></span></div>
     </section>
 
     <section class="results" aria-live="polite">
