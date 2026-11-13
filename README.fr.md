@@ -29,6 +29,7 @@ Le projet est pensé pour les monteurs, documentalistes audiovisuels, recherchis
 - Détecte les vidéos de page compatibles, médias directs, flux HLS/DASH et lecteurs intégrés.
 - Affiche une grande miniature à côté de chaque vidéo et capture localement le lecteur visible lorsqu’un site ne fournit qu’une image générique.
 - Sélectionne la meilleure qualité MP4/H.264 disponible, y compris la 4K lorsqu’une source compatible existe.
+- Nomme chaque fichier terminé `Chaîne — Titre de la vidéo [identifiant].mp4`, avec le créateur ou le site comme repli fiable.
 - Privilégie la langue audio originale lorsque la source l’expose.
 - Distingue clairement la langue de l’interface de celle des vidéos et affiche la version installée de l’extension.
 - Propose un mode audio MP3 uniquement.

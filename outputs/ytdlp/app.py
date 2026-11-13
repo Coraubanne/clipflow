@@ -682,9 +682,8 @@ def direct_stream_output_template(
     url: str,
     referer: str | None,
     title_hint: str | None,
-    quality_suffix: str,
 ) -> str | None:
-    """Give generic manifests a stable, human title instead of `playlist`."""
+    """Name generic manifests after their website and human page title."""
     try:
         parsed = urlparse(url)
     except ValueError:
@@ -705,6 +704,33 @@ def direct_stream_output_template(
     if not title:
         return None
 
+    source_url = referer or url
+    try:
+        source_host = (urlparse(source_url).hostname or "").casefold()
+    except ValueError:
+        source_host = ""
+    source_names = (
+        ("youtube.com", "YouTube"),
+        ("youtu.be", "YouTube"),
+        ("vimeo.com", "Vimeo"),
+        ("dailymotion.com", "Dailymotion"),
+        ("dai.ly", "Dailymotion"),
+        ("frame.io", "Frame.io"),
+        ("tf1.fr", "TF1"),
+        ("substack.com", "Substack"),
+    )
+    source = next(
+        (
+            label
+            for domain, label in source_names
+            if source_host == domain or source_host.endswith(f".{domain}")
+        ),
+        source_host.removeprefix("www.") or "Source",
+    )
+    source = re.sub(r"[\\/:]+", " – ", source)
+    source = re.sub(r"[\x00-\x1f\x7f]+", " ", source)
+    source = re.sub(r"\s+", " ", source).strip(" .")[:60].rstrip(" .") or "Source"
+
     normalized_referer = ""
     vimeo_id: str | None = None
     if referer:
@@ -721,7 +747,8 @@ def direct_stream_output_template(
     digest = hashlib.sha256(f"{normalized_referer}|{stable_stream}".encode("utf-8")).hexdigest()[:8]
     identity = f"vimeo-{vimeo_id}-{digest}" if vimeo_id else f"source-{digest}"
     escaped_title = title.replace("%", "%%")
-    return f"{escaped_title} [{identity}] {quality_suffix}.%(ext)s"
+    escaped_source = source.replace("%", "%%")
+    return f"{escaped_source} — {escaped_title} [{identity}].%(ext)s"
 
 
 def build_download_command(
@@ -737,10 +764,12 @@ def build_download_command(
     if not ffmpeg:
         raise ValueError("FFmpeg est nécessaire. Relancez installer.command.")
 
-    quality_suffix = "audio" if profile.audio_only else "compatible"
-    output_template = direct_stream_output_template(url, referer, title_hint, quality_suffix)
+    output_template = direct_stream_output_template(url, referer, title_hint)
     if output_template is None:
-        output_template = f"%(title).150B [%(id)s] {quality_suffix}.%(ext)s"
+        output_template = (
+            "%(channel,uploader,creator,webpage_url_domain,extractor|Source).60B"
+            " — %(title|Vidéo).150B [%(id)s].%(ext)s"
+        )
     command = [
         *prefix,
         "--ignore-config",

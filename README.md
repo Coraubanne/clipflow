@@ -29,6 +29,7 @@ It is designed for video editors, audiovisual documentalists, archive researcher
 - Detects compatible page videos, direct media, HLS/DASH streams and embedded players.
 - Shows a large thumbnail beside each detected video and locally captures the visible player when a site exposes only a generic image.
 - Selects the highest available MP4/H.264 quality, including 4K when a compatible source exists.
+- Names every finished file `Channel — Video title [identifier].mp4`, with the creator or website as a reliable fallback.
 - Preserves the original audio language whenever the source exposes it.
 - Labels the interface language separately from video audio and displays the installed extension version.
 - Offers an audio-only MP3 mode.

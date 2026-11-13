@@ -214,8 +214,11 @@ class TubeSaveTests(unittest.TestCase):
         self.assertIn("--continue", command)
         self.assertIn("--no-quiet", command)
         output = command[command.index("--output") + 1]
-        self.assertIn("%(title).150B", output)
-        self.assertEqual(Path(output).name, "%(title).150B [%(id)s] compatible.%(ext)s")
+        self.assertEqual(
+            Path(output).name,
+            "%(channel,uploader,creator,webpage_url_domain,extractor|Source).60B"
+            " — %(title|Vidéo).150B [%(id)s].%(ext)s",
+        )
         self.assertFalse(Path(output).is_absolute())
 
     def test_intermediary_files_use_a_hidden_folder_on_the_destination_drive(self):
@@ -251,7 +254,7 @@ class TubeSaveTests(unittest.TestCase):
                 self.assertTrue((destination / ".tubesave-incomplete" / path.name).is_file())
             self.assertTrue(unrelated.is_file())
 
-    def test_quality_suffix_avoids_skipping_an_older_lower_quality_file(self):
+    def test_video_and_audio_use_the_same_professional_identity(self):
         video = build_download_command(
             ["python", "-m", "yt_dlp"],
             "https://youtu.be/abc",
@@ -268,8 +271,11 @@ class TubeSaveTests(unittest.TestCase):
             Path("/tmp/ffmpeg"),
             None,
         )
-        self.assertIn("compatible", video[video.index("--output") + 1])
-        self.assertIn("audio", audio[audio.index("--output") + 1])
+        video_output = video[video.index("--output") + 1]
+        audio_output = audio[audio.index("--output") + 1]
+        self.assertEqual(video_output, audio_output)
+        self.assertIn("%(channel,uploader,creator", video_output)
+        self.assertIn(" — %(title|Vidéo).150B [%(id)s]", video_output)
 
     def test_network_waits_are_bounded(self):
         command = build_download_command(
@@ -352,6 +358,7 @@ class TubeSaveTests(unittest.TestCase):
             "X-ray of the pocket watch from the wreck of The Swan | Vimeo",
         )
         output = command[command.index("--output") + 1]
+        self.assertTrue(output.startswith("Vimeo — "))
         self.assertIn("X-ray of the pocket watch", output)
         self.assertIn("[vimeo-18264915-", output)
         self.assertNotIn("%(title)", output)
@@ -368,7 +375,8 @@ class TubeSaveTests(unittest.TestCase):
             "https://example.com/watch/42",
             "Démo 100%",
         )
-        self.assertIn("100%%", command[command.index("--output") + 1])
+        output = command[command.index("--output") + 1]
+        self.assertTrue(output.startswith("example.com — Démo 100%%"))
 
     def test_network_errors_are_retried(self):
         self.assertTrue(is_retryable_output("ERROR: Network is unreachable"))

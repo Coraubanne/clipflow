@@ -2,6 +2,12 @@
 
 All notable user-facing changes are documented here.
 
+## 2.11.0 — 2026-11-13
+
+- Standardized finished filenames as `Channel — Video title [identifier].extension`.
+- Made the channel mandatory, with creator, website domain and extractor fallbacks for non-YouTube sources.
+- Applied the same stable naming logic to direct HLS/DASH streams and audio-only downloads.
+
 ## 2.10.0 — 2026-11-13
 
 - Reorganized detected-video cards around larger, clearer 16:10 thumbnails.
