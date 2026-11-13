@@ -2,6 +2,13 @@
 
 All notable user-facing changes are documented here.
 
+## 2.10.0 — 2026-11-13
+
+- Reorganized detected-video cards around larger, clearer 16:10 thumbnails.
+- Added local video-frame capture and visible-player cropping when sites expose only a generic logo.
+- Added a layered thumbnail fallback for YouTube, HTML video posters, structured metadata and embedded players.
+- Kept captured preview images temporary and local to the open extension popup.
+
 ## 2.9.2 — 2026-11-13
 
 - Removed the explanatory sentence below the extension-language selector for a cleaner settings panel.

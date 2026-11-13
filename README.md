@@ -27,7 +27,7 @@ It is designed for video editors, audiovisual documentalists, archive researcher
 ## Highlights
 
 - Detects compatible page videos, direct media, HLS/DASH streams and embedded players.
-- Shows an available page or player thumbnail beside each detected video.
+- Shows a large thumbnail beside each detected video and locally captures the visible player when a site exposes only a generic image.
 - Selects the highest available MP4/H.264 quality, including 4K when a compatible source exists.
 - Preserves the original audio language whenever the source exposes it.
 - Labels the interface language separately from video audio and displays the installed extension version.

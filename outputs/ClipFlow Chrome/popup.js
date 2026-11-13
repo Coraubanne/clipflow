@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.9.2";
+const EXPECTED_EXTENSION_VERSION = "2.10.0";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
@@ -294,6 +294,7 @@ function detectVideosOnPage(uiLanguage = "fr") {
     const resolvedThumbnail = new URL(pageThumbnailSource, pageUrl);
     if (["http:", "https:"].includes(resolvedThumbnail.protocol)) pageThumbnail = resolvedThumbnail.href;
   } catch (_error) { /* aucune miniature de page exploitable */ }
+  const pageThumbnailLooksGeneric = /(?:^|[\/_-])(?:logo|brand|icon|favicon|avatar)(?:[\/_\-.]|$)/i.test(pageThumbnail);
   const found = [];
   const seen = new Map();
   const allVideoElements = Array.from(document.querySelectorAll("video"));
@@ -381,6 +382,38 @@ function detectVideosOnPage(uiLanguage = "fr") {
     return (Number(match[1]) || 0) * 3600 + (Number(match[2]) || 0) * 60 + (Number(match[3]) || 0);
   }
 
+  function visibleRect(element) {
+    const rect = element?.getBoundingClientRect?.();
+    if (!rect || rect.width < 80 || rect.height < 45) return null;
+    if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= innerWidth || rect.top >= innerHeight) return null;
+    return {
+      x: Math.max(0, rect.left),
+      y: Math.max(0, rect.top),
+      width: Math.min(rect.width, innerWidth - Math.max(0, rect.left)),
+      height: Math.min(rect.height, innerHeight - Math.max(0, rect.top)),
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+    };
+  }
+
+  function captureVideoFrame(video) {
+    try {
+      if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return "";
+      const width = Math.min(240, video.videoWidth);
+      const height = Math.max(1, Math.round(width * video.videoHeight / video.videoWidth));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = Math.min(160, height);
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) return "";
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const data = canvas.toDataURL("image/jpeg", 0.74);
+      return data.length <= 180_000 ? data : "";
+    } catch (_error) {
+      return "";
+    }
+  }
+
   function add(rawUrl, label, detail, options = {}) {
     let resolved;
     try {
@@ -419,16 +452,44 @@ function detectVideosOnPage(uiLanguage = "fr") {
       source: options.source || "page",
       mediaRole,
       thumbnail: "",
+      thumbnailScore: 0,
+      thumbnailRect: options.thumbnailRect || null,
     };
-    const thumbnailSource = options.thumbnail || pageThumbnail;
-    try {
-      const thumbnail = new URL(thumbnailSource, pageUrl);
-      if (["http:", "https:"].includes(thumbnail.protocol)) candidate.thumbnail = thumbnail.href;
-    } catch (_error) { /* la carte restera sans miniature */ }
+    const capturedThumbnail = typeof options.capturedThumbnail === "string"
+      && /^data:image\/(?:jpeg|png|webp);base64,/i.test(options.capturedThumbnail)
+      && options.capturedThumbnail.length <= 180_000
+      ? options.capturedThumbnail
+      : "";
+    if (capturedThumbnail) {
+      candidate.thumbnail = capturedThumbnail;
+      candidate.thumbnailScore = 100;
+    } else {
+      const thumbnailSource = options.thumbnail || pageThumbnail;
+      try {
+        const thumbnail = new URL(thumbnailSource, pageUrl);
+        if (["http:", "https:"].includes(thumbnail.protocol)) {
+          candidate.thumbnail = thumbnail.href;
+          candidate.thumbnailScore = options.thumbnailScore
+            || (thumbnail.href === pageThumbnail && pageThumbnailLooksGeneric ? 5 : 40);
+        }
+      } catch (_error) { /* la carte restera sans miniature */ }
+    }
     const identity = options.playerKey ? `${url}|${options.playerKey}` : url;
     const previousIndex = seen.get(identity);
     if (previousIndex !== undefined) {
-      if (found[previousIndex].priority < candidate.priority) found[previousIndex] = candidate;
+      const previous = found[previousIndex];
+      if (previous.priority < candidate.priority) {
+        if (candidate.thumbnailScore < previous.thumbnailScore) {
+          candidate.thumbnail = previous.thumbnail;
+          candidate.thumbnailScore = previous.thumbnailScore;
+          candidate.thumbnailRect ||= previous.thumbnailRect;
+        }
+        found[previousIndex] = candidate;
+      } else if (candidate.thumbnailScore > previous.thumbnailScore) {
+        previous.thumbnail = candidate.thumbnail;
+        previous.thumbnailScore = candidate.thumbnailScore;
+        previous.thumbnailRect ||= candidate.thumbnailRect;
+      }
       return;
     }
     seen.set(identity, found.length);
@@ -448,6 +509,7 @@ function detectVideosOnPage(uiLanguage = "fr") {
         pageFallback: true,
         priority: 120,
         thumbnail: videoId ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg` : pageThumbnail,
+        thumbnailScore: videoId ? 90 : 40,
       });
     }
     return { pageUrl, pageTitle: title, drmDetected, videos: found };
@@ -498,6 +560,8 @@ function detectVideosOnPage(uiLanguage = "fr") {
       || video.getAttribute("title")
       || `${copy.video} ${index + 1}`;
     const rect = video.getBoundingClientRect();
+    const capturedThumbnail = captureVideoFrame(video);
+    const thumbnailRect = visibleRect(video);
     const playerKey = visibleVideoElements.length
       ? `visual-${Math.round(rect.left / 40)}-${Math.round(rect.top / 40)}-${Math.round(rect.width / 40)}-${Math.round(rect.height / 40)}`
       : `player-${index}`;
@@ -521,6 +585,9 @@ function detectVideosOnPage(uiLanguage = "fr") {
         // could prefer the unsupported HTML page over the MP4 being played.
         mediaRole: "audio-video",
         thumbnail: video.poster || pageThumbnail,
+        thumbnailScore: video.poster ? 70 : 40,
+        capturedThumbnail,
+        thumbnailRect,
       });
     });
     add(pageUrl, label, `${dimensions} · ${copy.fromPage}`, {
@@ -531,6 +598,9 @@ function detectVideosOnPage(uiLanguage = "fr") {
       source: "page",
       mediaRole: "audio-video",
       thumbnail: video.poster || pageThumbnail,
+      thumbnailScore: video.poster ? 70 : 40,
+      capturedThumbnail,
+      thumbnailRect,
     });
   });
 
@@ -588,6 +658,7 @@ function detectVideosOnPage(uiLanguage = "fr") {
               playerKey: structuredKey,
               mediaRole: /VideoObject/i.test(typeText) ? "audio-video" : "unknown",
               thumbnail,
+              thumbnailScore: thumbnail ? 65 : 0,
             });
           }
         }
@@ -597,12 +668,14 @@ function detectVideosOnPage(uiLanguage = "fr") {
   });
 
   embeddedPlayers.forEach((frame, index) => {
+    const thumbnailRect = visibleRect(frame);
     add(frame.src, `${copy.embeddedPlayer} ${index + 1}`, copy.embeddedPlayerPage, {
       kind: "PLAYER",
       pageFallback: true,
       priority: 65,
       source: "embed",
       playerKey: `embed-${index}`,
+      thumbnailRect,
     });
   });
 
@@ -815,6 +888,67 @@ function requiresWebmConversion(video) {
   }
 }
 
+function capturedTabImage(windowId) {
+  return new Promise((resolve) => {
+    chrome.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 72 }, (dataUrl) => {
+      if (chrome.runtime.lastError || !dataUrl) resolve("");
+      else resolve(dataUrl);
+    });
+  });
+}
+
+function croppedVisibleThumbnail(screenshotUrl, rect) {
+  return new Promise((resolve) => {
+    if (!screenshotUrl || !rect?.width || !rect?.height || !rect.viewportWidth || !rect.viewportHeight) {
+      resolve("");
+      return;
+    }
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const scaleX = image.naturalWidth / rect.viewportWidth;
+        const scaleY = image.naturalHeight / rect.viewportHeight;
+        const sourceX = Math.max(0, Math.round(rect.x * scaleX));
+        const sourceY = Math.max(0, Math.round(rect.y * scaleY));
+        const sourceWidth = Math.min(image.naturalWidth - sourceX, Math.round(rect.width * scaleX));
+        const sourceHeight = Math.min(image.naturalHeight - sourceY, Math.round(rect.height * scaleY));
+        if (sourceWidth < 40 || sourceHeight < 24) {
+          resolve("");
+          return;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = 240;
+        canvas.height = Math.max(90, Math.min(150, Math.round(240 * sourceHeight / sourceWidth)));
+        const context = canvas.getContext("2d", { alpha: false });
+        if (!context) {
+          resolve("");
+          return;
+        }
+        context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.76));
+      } catch (_error) {
+        resolve("");
+      }
+    };
+    image.onerror = () => resolve("");
+    image.src = screenshotUrl;
+  });
+}
+
+async function enrichWeakThumbnails(tab, selectedVideos) {
+  const targets = selectedVideos.filter((video) => video.thumbnailRect && Number(video.thumbnailScore || 0) < 70);
+  if (!targets.length) return;
+  const screenshot = await capturedTabImage(tab.windowId);
+  if (!screenshot) return;
+  await Promise.all(targets.map(async (video) => {
+    const thumbnail = await croppedVisibleThumbnail(screenshot, video.thumbnailRect);
+    if (thumbnail) {
+      video.thumbnail = thumbnail;
+      video.thumbnailScore = 95;
+    }
+  }));
+}
+
 function createVideoCard(video, index) {
   const card = document.createElement("article");
   card.className = "video-card";
@@ -945,6 +1079,7 @@ async function scan() {
     const singleEmbeddedPlayer = topPlayerKeys.has("embed-0")
       && !Array.from(topPlayerKeys).some((key) => /^embed-[1-9]\d*$/.test(key));
     const merged = new Map();
+    const topFrameRects = new Map();
     let drmDetected = false;
     let durationSeconds = 0;
     results.forEach((injection) => {
@@ -958,6 +1093,8 @@ async function scan() {
           video.playerKey = injection.frameId !== 0 && singleEmbeddedPlayer
             ? "0:embed-0"
             : `${injection.frameId}:${video.playerKey}`;
+          if (injection.frameId === 0 && video.thumbnailRect) topFrameRects.set(video.playerKey, video.thumbnailRect);
+          if (injection.frameId !== 0) video.thumbnailRect = null;
         }
         if (injection.frameId !== 0 && video.pageFallback && video.kind === "PAGE") {
           video.kind = "PLAYER";
@@ -969,6 +1106,11 @@ async function scan() {
         const previous = merged.get(identity);
         if (!previous || (previous.priority || 0) < (video.priority || 0)) merged.set(identity, video);
       });
+    });
+    merged.forEach((video) => {
+      if (!video.thumbnailRect && video.playerKey && topFrameRects.has(video.playerKey)) {
+        video.thumbnailRect = topFrameRects.get(video.playerKey);
+      }
     });
     let monitoredMedia = [];
     let tf1Status = null;
@@ -1005,6 +1147,7 @@ async function scan() {
         : (tab.title || mainResult.pageTitle || video.label),
       detail: `${video.kind === "VIDÉO" ? t("kindVideo") : video.kind} · ${t("bestSource")}`,
     }));
+    await enrichWeakThumbnails(tab, selectedVideos);
     activePage = {
       tabId: tab.id,
       pageUrl: tab.url,

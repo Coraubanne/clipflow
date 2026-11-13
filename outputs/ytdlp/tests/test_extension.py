@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.9.2")
+        self.assertEqual(manifest["version"], "2.10.0")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,7 +27,7 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.9.2"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.10.0"', source)
         self.assertIn("chrome.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
@@ -41,10 +41,16 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("video.poster || pageThumbnail", source)
         self.assertIn("value.thumbnailUrl", source)
         self.assertIn("https://i.ytimg.com/vi/", source)
+        self.assertIn("function captureVideoFrame(video)", source)
+        self.assertIn("chrome.tabs.captureVisibleTab", source)
+        self.assertIn("function croppedVisibleThumbnail", source)
+        self.assertIn("await enrichWeakThumbnails(tab, selectedVideos)", source)
         self.assertIn('thumbnail.className = "video-thumbnail"', source)
         self.assertIn("thumbnail.addEventListener(\"error\"", source)
         self.assertIn(".video-thumbnail", styles)
         self.assertIn("object-fit: cover", styles)
+        self.assertIn("width: 88px", styles)
+        self.assertIn("max-height: 260px", styles)
 
     def test_popup_sends_page_title_for_generic_stream_filenames(self):
         popup = (EXTENSION / "popup.js").read_text(encoding="utf-8")

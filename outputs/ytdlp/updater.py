@@ -26,7 +26,7 @@ import certifi
 GITHUB_OWNER = "Coraubanne"
 GITHUB_REPOSITORY = "clipflow"
 CURRENT_RELEASE = 69
-CURRENT_VERSION = "2.9.2"
+CURRENT_VERSION = "2.10.0"
 EXTENSION_ID = "emfjpphkcgnjldilcnieaoppmfpfkhfg"
 PREMIERE_PLUGIN_ID = "fr.clipflow.premiere.bridge"
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
