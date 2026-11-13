@@ -21,6 +21,7 @@ hiddenimports += collect_submodules("yt_dlp_plugins")
 datas += collect_data_files("yt_dlp_plugins")
 hiddenimports += [
     "native_host",
+    "updater",
     "yt_dlp_plugins.extractor.webkit_jsi",
     "yt_dlp_plugins.extractor.ytjsc",
     "yt_dlp_plugins.webkit_jsi.lib.api",
@@ -85,12 +86,12 @@ app = BUNDLE(
     name="ClipFlow.app",
     icon=str(project / "assets" / "ClipFlow.png"),
     bundle_identifier="fr.clipflow.app",
-    version="1.46",
+    version="1.47",
     info_plist={
         "CFBundleDisplayName": "ClipFlow",
         "CFBundleName": "ClipFlow",
-        "CFBundleShortVersionString": "1.46",
-        "CFBundleVersion": "47",
+        "CFBundleShortVersionString": "1.47",
+        "CFBundleVersion": "48",
         "CFBundleDevelopmentRegion": "fr",
         "LSApplicationCategoryType": "public.app-category.utilities",
         "LSUIElement": True,

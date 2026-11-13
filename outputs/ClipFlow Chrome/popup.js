@@ -1,5 +1,6 @@
 const SETTINGS_VERSION = 6;
-const EXPECTED_EXTENSION_VERSION = "2.8.8";
+const EXPECTED_EXTENSION_VERSION = "2.8.9";
+const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
   // quand ses fichiers changent. L’ouverture du popup applique la mise à jour.
@@ -30,9 +31,89 @@ const progressSection = document.getElementById("download-progress");
 const progressLabel = document.getElementById("progress-label");
 const progressDetail = document.getElementById("progress-detail");
 const progressPercent = document.getElementById("progress-percent");
+const checkUpdate = document.getElementById("check-update");
+const updateStatus = document.getElementById("update-status");
 let displayedProgress = 0;
 let progressAnimation = null;
 let progressPoll = null;
+let availableUpdate = null;
+
+function runtimeMessage(message) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error("Le moteur ClipFlow est indisponible."));
+      } else if (!response?.ok) {
+        reject(new Error(response?.error || "La demande de mise à jour a échoué."));
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
+
+function displayUpdate(response) {
+  availableUpdate = response.available ? response : null;
+  settingsToggle.classList.toggle("update-ready", Boolean(availableUpdate));
+  if (availableUpdate) {
+    checkUpdate.textContent = `Installer ClipFlow v${response.latestRelease}`;
+    updateStatus.textContent = "Nouvelle version disponible · application, extension et module Premiere Pro.";
+  } else {
+    checkUpdate.textContent = "Chercher une mise à jour";
+    updateStatus.textContent = `ClipFlow v${response.currentRelease} est à jour.`;
+  }
+}
+
+async function findUpdate(manual = false) {
+  if (!manual) {
+    const stored = await chrome.storage.local.get("clipFlowUpdateCheck");
+    const cached = stored.clipFlowUpdateCheck;
+    if (cached && Date.now() - Number(cached.checkedAt || 0) < UPDATE_CHECK_INTERVAL) {
+      displayUpdate(cached);
+      return;
+    }
+  }
+  checkUpdate.disabled = true;
+  checkUpdate.textContent = "Vérification…";
+  updateStatus.textContent = "Connexion sécurisée à GitHub…";
+  try {
+    const response = await runtimeMessage({ type: "check_update" });
+    const cached = { ...response, checkedAt: Date.now() };
+    await chrome.storage.local.set({ clipFlowUpdateCheck: cached });
+    displayUpdate(cached);
+  } catch (error) {
+    updateStatus.textContent = error.message;
+    checkUpdate.textContent = "Réessayer";
+  } finally {
+    checkUpdate.disabled = false;
+  }
+}
+
+async function installAvailableUpdate() {
+  if (!availableUpdate) {
+    await findUpdate(true);
+    return;
+  }
+  checkUpdate.disabled = true;
+  checkUpdate.textContent = "Installation…";
+  updateStatus.textContent = "Téléchargement, vérification et installation en cours…";
+  try {
+    const response = await runtimeMessage({
+      type: "install_update",
+      release: availableUpdate.latestRelease,
+      archiveAssetId: availableUpdate.archiveAssetId,
+      checksumAssetId: availableUpdate.checksumAssetId,
+    });
+    await chrome.storage.local.remove("clipFlowUpdateCheck");
+    updateStatus.textContent = response.message || "Mise à jour installée.";
+    checkUpdate.textContent = "Mise à jour terminée";
+    setTimeout(() => chrome.runtime.reload(), 900);
+  } catch (error) {
+    updateStatus.textContent = error.message;
+    checkUpdate.textContent = "Réessayer l’installation";
+    checkUpdate.disabled = false;
+  }
+}
 
 function setSettingsOpen(open) {
   settingsPanel.hidden = !open;
@@ -818,6 +899,10 @@ settingsToggle.addEventListener("click", () => {
   setSettingsOpen(settingsPanel.hidden);
 });
 
+checkUpdate.addEventListener("click", installAvailableUpdate);
+
 rescan.addEventListener("click", scan);
 
-loadSettings().then(scan).catch((error) => setStatus(error.message, "error"));
+loadSettings()
+  .then(() => Promise.all([scan(), findUpdate(false)]))
+  .catch((error) => setStatus(error.message, "error"));

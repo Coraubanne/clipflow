@@ -436,6 +436,17 @@ async function handleMessage(message, sender) {
   if (message.type === "choose_folder") {
     return sendNativeMessage({ action: "choose_folder" });
   }
+  if (message.type === "check_update") {
+    return sendNativeMessage({ action: "check_update" });
+  }
+  if (message.type === "install_update") {
+    return sendNativeMessage({
+      action: "install_update",
+      release: Number(message.release),
+      archiveAssetId: Number(message.archiveAssetId),
+      checksumAssetId: Number(message.checksumAssetId),
+    });
+  }
   if (message.type === "get_active_job") {
     const tabId = Number(message.tabId);
     if (!Number.isInteger(tabId) || tabId < 0) throw new Error("Onglet invalide.");

@@ -56,6 +56,20 @@ h1 {
   color: #fff;
 }
 
+.settings-toggle.update-ready::after {
+  background: #ff3b30;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(255, 59, 48, .3);
+  content: "";
+  height: 6px;
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  width: 6px;
+}
+
+.settings-toggle { position: relative; }
+
 main { padding: 0 7px 7px; }
 
 .results {
@@ -181,6 +195,28 @@ button:disabled { cursor: default; opacity: .55; }
   color: #8e8e93;
   font-size: 9px;
   margin-top: 1px;
+}
+
+.update-option {
+  display: grid;
+  gap: 4px;
+}
+
+.update-option button {
+  background: #0a84ff;
+  box-shadow: 0 4px 12px rgba(10, 132, 255, .2);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 650;
+  min-height: 30px;
+  padding: 6px 9px;
+}
+
+.update-option small {
+  color: #8e8e93;
+  font-size: 8px;
+  line-height: 1.35;
+  padding: 0 2px;
 }
 
 .results { margin-top: 6px; }

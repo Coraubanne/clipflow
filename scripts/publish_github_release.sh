@@ -25,11 +25,16 @@ fi
 
 tag="${1:-v${release_number}}"
 archive="outputs/ClipFlow-complet-v${release_number}.zip"
+checksum="${archive}.sha256"
 
 if [[ ! -f "${archive}" ]]; then
   print -u2 "Archive introuvable : ${archive}"
   exit 1
 fi
+
+archive_name="${archive:t}"
+archive_hash="$(shasum -a 256 "${archive}" | awk '{print $1}')"
+print "${archive_hash}  ${archive_name}" > "${checksum}"
 
 if [[ -n "$(git status --porcelain)" ]]; then
   print -u2 "Le dépôt contient des changements non enregistrés. Faites un commit avant la publication."
@@ -44,9 +49,9 @@ git push origin main
 git push origin "${tag}"
 
 if "${gh_bin}" release view "${tag}" >/dev/null 2>&1; then
-  "${gh_bin}" release upload "${tag}" "${archive}" --clobber
+  "${gh_bin}" release upload "${tag}" "${archive}" "${checksum}" --clobber
 else
-  "${gh_bin}" release create "${tag}" "${archive}" \
+  "${gh_bin}" release create "${tag}" "${archive}" "${checksum}" \
     --title "ClipFlow ${tag}" \
     --notes "Version complète de ClipFlow. Le ZIP contient l’application macOS, l’extension Chrome et le module Premiere Pro."
 fi
@@ -61,4 +66,4 @@ if [[ "$("${gh_bin}" release view "${tag}" --json isDraft --jq '.isDraft')" == "
     --title "ClipFlow ${tag}"
 fi
 
-print "Version ${tag} publiée avec ${archive}."
+print "Version ${tag} publiée avec ${archive} et son empreinte SHA-256."

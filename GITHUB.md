@@ -11,7 +11,7 @@ Le dépôt GitHub doit rester **privé** tant que ClipFlow n'est pas signé, doc
    (cd outputs/ytdlp && .venv/bin/python -m unittest discover -s tests -v)
    ```
 
-3. Reconstruire l’application et l’archive `outputs/ClipFlow-complet-vNUMERO.zip`.
+3. Reconstruire l’application puis créer l’archive et son empreinte avec `scripts/build_distribution.sh`.
 4. Enregistrer les changements dans Git avec un message clair.
 5. Publier la version et son ZIP :
 
@@ -19,7 +19,7 @@ Le dépôt GitHub doit rester **privé** tant que ClipFlow n'est pas signé, doc
    scripts/publish_github_release.sh
    ```
 
-Le script pousse la branche `main`, crée un tag `vNUMERO` et ajoute le ZIP à une Release GitHub. Il refuse de publier un dossier qui contient des modifications non enregistrées.
+Le script pousse la branche `main`, crée un tag `vNUMERO` et ajoute le ZIP ainsi que son fichier `.sha256` à une Release GitHub. L’empreinte est obligatoire pour que l’installateur automatique accepte la release. Le script refuse de publier un dossier qui contient des modifications non enregistrées.
 
 ## Sauvegarde hors GitHub
 

@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.8.8")
+        self.assertEqual(manifest["version"], "2.8.9")
         self.assertEqual(manifest["name"], "ClipFlow")
         self.assertEqual(
             set(manifest["permissions"]),
@@ -20,7 +20,7 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.8.8"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.8.9"', source)
         self.assertIn("chrome.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
@@ -89,6 +89,18 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("setSettingsOpen(settingsPanel.hidden)", source)
         self.assertIn("Son de fin", markup)
         self.assertIn("Quand le fichier est prêt", markup)
+
+    def test_secure_github_update_is_available_from_settings(self):
+        source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
+        markup = (EXTENSION / "popup.html").read_text(encoding="utf-8")
+        background = (EXTENSION / "background.js").read_text(encoding="utf-8")
+        self.assertIn('id="check-update"', markup)
+        self.assertIn("Chercher une mise à jour", markup)
+        self.assertIn('type: "check_update"', source)
+        self.assertIn('type: "install_update"', source)
+        self.assertIn('action: "check_update"', background)
+        self.assertIn('action: "install_update"', background)
+        self.assertIn("UPDATE_CHECK_INTERVAL", source)
 
     def test_popup_ignores_segments_and_reports_drm(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")

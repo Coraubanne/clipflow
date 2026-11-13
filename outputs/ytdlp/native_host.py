@@ -363,6 +363,19 @@ def handle_message(message: object) -> dict[str, object]:
         return read_status(message)
     if action == "choose_folder":
         return choose_folder()
+    if action == "check_update":
+        from updater import latest_release
+
+        return latest_release()
+    if action == "install_update":
+        from updater import install_release
+
+        return install_release(
+            int(message.get("release", 0)),
+            int(message.get("archiveAssetId", 0)),
+            int(message.get("checksumAssetId", 0)),
+            app_bundle(),
+        )
     if action == "ping":
         return {"ok": True, "version": "2.1"}
     raise ValueError("Action inconnue.")
