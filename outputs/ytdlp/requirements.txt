@@ -1,4 +1,4 @@
-yt-dlp[default,curl-cffi]>=2026.8.19,<2027
+yt-dlp[default,curl-cffi]>=2026.10.26,<2027
 certifi>=2025.1.31
 yt-dlp-apple-webkit-jsi>=0.1.1; sys_platform == "darwin"
 imageio-ffmpeg>=0.6.0

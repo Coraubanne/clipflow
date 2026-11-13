@@ -21,6 +21,6 @@ setuptools==84.0.0
 urllib3==2.8.0
 websockets==17.2
 wrapt==2.4.0rc4
-yt-dlp==2026.10.21
+yt-dlp==2026.10.26
 yt-dlp-apple-webkit-jsi==0.1.1
 yt-dlp-ejs==0.8.0
