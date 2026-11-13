@@ -32,6 +32,7 @@ Le projet est pensé pour les monteurs, documentalistes audiovisuels, recherchis
 - Propose un mode audio MP3 uniquement.
 - Cache les fragments temporaires et ne montre que les fichiers terminés.
 - Fonctionne comme agent macOS invisible ; Chrome reste l’interface principale.
+- Propose une interface automatique, française ou anglaise depuis les réglages de l’extension.
 - Peut enregistrer à côté du projet Premiere Pro et demander l’import automatique via le panneau UXP.
 - Vérifie les mises à jour GitHub par empreinte SHA-256 puis actualise ensemble l’app, l’extension et le panneau Premiere.
 - Ne contient ni télémétrie ni publicité.

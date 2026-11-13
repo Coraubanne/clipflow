@@ -1,0 +1,11 @@
+{
+  "extensionName": {
+    "message": "ClipFlow"
+  },
+  "extensionDescription": {
+    "message": "Find compatible media on the active page and send it to ClipFlow."
+  },
+  "actionTitle": {
+    "message": "ClipFlow · media on this page"
+  }
+}

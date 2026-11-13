@@ -2,6 +2,12 @@
 
 All notable user-facing changes are documented here.
 
+## v68 — 2026-11-13
+
+- Added an Automatic, Français and English interface-language selector to the Chrome extension.
+- Localized video detection, download progress, errors, update controls and native-host responses.
+- Added localized Chrome extension metadata while preserving existing user settings during migration.
+
 ## v67 — 2026-11-13
 
 - Opened the project for public distribution with professional English and French documentation.

@@ -1,0 +1,11 @@
+{
+  "extensionName": {
+    "message": "ClipFlow"
+  },
+  "extensionDescription": {
+    "message": "Détecte les médias compatibles de l’onglet actif et les envoie vers ClipFlow."
+  },
+  "actionTitle": {
+    "message": "ClipFlow · médias de cette page"
+  }
+}

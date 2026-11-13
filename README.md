@@ -32,6 +32,7 @@ It is designed for video editors, audiovisual documentalists, archive researcher
 - Offers an audio-only MP3 mode.
 - Keeps temporary fragments in a hidden workspace and exposes only completed files.
 - Runs as an invisible macOS background agent; Chrome is the main interface.
+- Offers an automatic, French or English interface from the extension settings.
 - Saves beside an active Premiere Pro project and requests automatic import through the optional UXP panel.
 - Checks GitHub Releases for updates, verifies SHA-256 integrity, then updates the app, extension and Premiere panel together.
 - Contains no telemetry or advertising.

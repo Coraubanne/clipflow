@@ -10,39 +10,47 @@
   <header>
     <img class="brand-icon" src="icons/icon-48.png" alt="">
     <h1>ClipFlow</h1>
-    <button id="settings-toggle" class="settings-toggle" type="button" aria-label="Ouvrir les réglages" aria-controls="settings-panel" aria-expanded="false" title="Réglages">⚙︎</button>
+    <button id="settings-toggle" class="settings-toggle" type="button" data-i18n-aria="openSettings" aria-label="Ouvrir les réglages" aria-controls="settings-panel" aria-expanded="false" data-i18n-title="settings" title="Réglages">⚙︎</button>
   </header>
 
   <main>
-    <section id="settings-panel" class="settings-panel" aria-label="Réglages du téléchargement" hidden>
-      <label class="destination-setting">
-        <span>Enregistrer dans</span>
-        <select id="destination" aria-label="Dossier de destination">
-          <option value="downloads">Téléchargements</option>
-          <option value="movies">Films</option>
-          <option value="desktop">Bureau</option>
-          <option value="premiere">Premiere Pro</option>
-          <option value="choose">Autre dossier…</option>
+    <section id="settings-panel" class="settings-panel" data-i18n-aria="downloadSettings" aria-label="Réglages du téléchargement" hidden>
+      <label class="destination-setting language-setting">
+        <span data-i18n="language">Langue</span>
+        <select id="language" data-i18n-aria="language" aria-label="Langue">
+          <option value="auto" data-i18n="languageAuto">Automatique</option>
+          <option value="fr">Français</option>
+          <option value="en">English</option>
         </select>
       </label>
-      <label class="sound-option" title="Jouer un son à la fin du téléchargement">
+      <label class="destination-setting">
+        <span data-i18n="saveTo">Enregistrer dans</span>
+        <select id="destination" data-i18n-aria="destinationFolder" aria-label="Dossier de destination">
+          <option value="downloads" data-i18n="downloads">Téléchargements</option>
+          <option value="movies" data-i18n="movies">Films</option>
+          <option value="desktop" data-i18n="desktop">Bureau</option>
+          <option value="premiere">Premiere Pro</option>
+          <option value="choose" data-i18n="otherFolder">Autre dossier…</option>
+        </select>
+      </label>
+      <label class="sound-option" data-i18n-title="completionSoundTitle" title="Jouer un son à la fin du téléchargement">
         <span class="option-copy">
-          <strong>Son de fin</strong>
-          <small>Quand le fichier est prêt</small>
+          <strong data-i18n="completionSound">Son de fin</strong>
+          <small data-i18n="whenReady">Quand le fichier est prêt</small>
         </span>
         <input id="completion-sound" type="checkbox" checked role="switch">
       </label>
       <div class="update-option">
-        <button id="check-update" type="button">Chercher une mise à jour</button>
-        <small id="update-status">ClipFlow vérifie les releases GitHub sécurisées.</small>
+        <button id="check-update" type="button" data-i18n="checkUpdate">Chercher une mise à jour</button>
+        <small id="update-status" data-i18n="updateHint">ClipFlow vérifie les releases GitHub sécurisées.</small>
       </div>
     </section>
 
-    <section class="quick-options" aria-label="Option du fichier">
+    <section class="quick-options" data-i18n-aria="fileOption" aria-label="Option du fichier">
       <label class="audio-option">
         <span class="option-copy">
-          <strong>Audio uniquement</strong>
-          <small>MP3 sans vidéo</small>
+          <strong data-i18n="audioOnly">Audio uniquement</strong>
+          <small data-i18n="mp3NoVideo">MP3 sans vidéo</small>
         </span>
         <input id="audio-only" type="checkbox" role="switch">
       </label>
@@ -50,18 +58,18 @@
 
     <section id="download-progress" class="download-progress" hidden aria-live="polite">
       <div>
-        <span id="progress-label">Téléchargement</span>
-        <small id="progress-detail">Préparation…</small>
+        <span id="progress-label" data-i18n="download">Téléchargement</span>
+        <small id="progress-detail" data-i18n="preparing">Préparation…</small>
       </div>
       <strong id="progress-percent">1 %</strong>
     </section>
 
     <section class="results" aria-live="polite">
       <div class="results-heading">
-        <strong id="page-title">Analyse de la page…</strong>
-        <button id="rescan" class="icon-button" type="button" title="Relancer l’analyse" aria-label="Relancer l’analyse">↻</button>
+        <strong id="page-title" data-i18n="analyzingPage">Analyse de la page…</strong>
+        <button id="rescan" class="icon-button" type="button" data-i18n-title="rescan" title="Relancer l’analyse" data-i18n-aria="rescan" aria-label="Relancer l’analyse">↻</button>
       </div>
-      <div id="status" class="status">Recherche des lecteurs vidéo…</div>
+      <div id="status" class="status" data-i18n="searchingPlayers">Recherche des lecteurs vidéo…</div>
       <div id="videos" class="video-list"></div>
     </section>
   </main>

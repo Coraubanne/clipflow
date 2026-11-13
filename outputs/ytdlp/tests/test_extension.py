@@ -9,18 +9,25 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.8.9")
-        self.assertEqual(manifest["name"], "ClipFlow")
+        self.assertEqual(manifest["version"], "2.9.0")
+        self.assertEqual(manifest["name"], "__MSG_extensionName__")
+        self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
             set(manifest["permissions"]),
             {"nativeMessaging", "storage", "activeTab", "scripting", "webRequest"},
         )
         self.assertEqual(manifest["host_permissions"], ["https://*.tf1.fr/*"])
         self.assertNotIn("content_scripts", manifest)
+        for locale in ("en", "fr"):
+            messages = json.loads(
+                (EXTENSION / "_locales" / locale / "messages.json").read_text(encoding="utf-8")
+            )
+            self.assertIn("extensionName", messages)
+            self.assertIn("extensionDescription", messages)
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.8.9"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.9.0"', source)
         self.assertIn("chrome.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
@@ -59,7 +66,7 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("function animateProgress(target)", source)
         self.assertIn('type: "download_status"', source)
         self.assertIn('action: "status"', background)
-        self.assertIn("function monitorActiveJob(tabId, jobId)", background)
+        self.assertIn("function monitorActiveJob(tabId, jobId, language", background)
         self.assertIn("resumeActiveJobMonitors()", background)
         self.assertIn("progress: response.progress", background)
         self.assertIn("updateJobBadge(tabId, response)", background)
@@ -191,8 +198,22 @@ class ChromeExtensionTests(unittest.TestCase):
     def test_popup_disables_confirmed_drm_sources(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
         self.assertIn("if (video.drmProtected)", source)
-        self.assertIn('button.textContent = "Protégée"', source)
+        self.assertIn('button.textContent = t("protected")', source)
         self.assertIn("selectedVideos.some((video) => video.drmProtected)", source)
+
+    def test_interface_language_can_be_automatic_french_or_english(self):
+        source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
+        markup = (EXTENSION / "popup.html").read_text(encoding="utf-8")
+        background = (EXTENSION / "background.js").read_text(encoding="utf-8")
+        self.assertIn('id="language"', markup)
+        self.assertIn('value="auto"', markup)
+        self.assertIn('value="fr"', markup)
+        self.assertIn('value="en"', markup)
+        self.assertIn('language: "auto"', source)
+        self.assertIn("function activeLanguage()", source)
+        self.assertIn("function applyLanguage()", source)
+        self.assertIn("language: activeLanguage()", source)
+        self.assertIn("const language = interfaceLanguage(message?.language)", background)
 
     def test_direct_webm_requires_confirmation_before_conversion_download(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")

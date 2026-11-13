@@ -1,5 +1,5 @@
 const NATIVE_HOST = "fr.tubesave.chrome";
-const SETTINGS_VERSION = 6;
+const SETTINGS_VERSION = 7;
 const QUALITY_KEYS = new Set(["best", "audio", "1080", "720", "480"]);
 const DESTINATION_KEYS = new Set(["downloads", "movies", "desktop", "custom", "premiere"]);
 const NETWORK_MEDIA_PREFIX = "tubeSaveNetworkMedia:";
@@ -29,7 +29,7 @@ function activeJobKey(tabId) {
   return `${ACTIVE_JOB_PREFIX}${tabId}`;
 }
 
-async function rememberActiveJob(tabId, response) {
+async function rememberActiveJob(tabId, response, language = "fr") {
   if (!Number.isInteger(tabId) || tabId < 0 || typeof response?.jobId !== "string") return;
   await chrome.storage.session.set({
     [activeJobKey(tabId)]: {
@@ -38,10 +38,11 @@ async function rememberActiveJob(tabId, response) {
       state: "queued",
       progress: 1,
       message: "Préparation…",
+      language: interfaceLanguage(language),
       updatedAt: Date.now(),
     },
   });
-  monitorActiveJob(tabId, response.jobId);
+  monitorActiveJob(tabId, response.jobId, language);
 }
 
 async function updateJobBadge(tabId, response) {
@@ -63,7 +64,7 @@ function stopActiveJobMonitor(tabId) {
   activeJobPollers.delete(tabId);
 }
 
-function monitorActiveJob(tabId, jobId) {
+function monitorActiveJob(tabId, jobId, language = "fr") {
   if (!Number.isInteger(tabId) || tabId < 0 || typeof jobId !== "string" || !jobId) return;
   stopActiveJobMonitor(tabId);
   const token = { jobId, timer: null };
@@ -72,7 +73,7 @@ function monitorActiveJob(tabId, jobId) {
   const poll = async () => {
     if (activeJobPollers.get(tabId) !== token) return;
     try {
-      const response = await sendNativeMessage({ action: "status", jobId });
+      const response = await sendNativeMessage({ action: "status", jobId, language: interfaceLanguage(language) });
       const key = activeJobKey(tabId);
       const stored = await chrome.storage.session.get(key);
       if (stored[key]?.jobId === jobId) {
@@ -108,7 +109,7 @@ async function resumeActiveJobMonitors() {
     if (!key.startsWith(ACTIVE_JOB_PREFIX) || typeof job?.jobId !== "string") return;
     if (["complete", "error", "cancelled"].includes(job.state)) return;
     const tabId = Number(key.slice(ACTIVE_JOB_PREFIX.length));
-    if (Number.isInteger(tabId) && tabId >= 0) monitorActiveJob(tabId, job.jobId);
+    if (Number.isInteger(tabId) && tabId >= 0) monitorActiveJob(tabId, job.jobId, job.language);
   });
 }
 
@@ -330,8 +331,12 @@ async function requestTf1HlsVariant(details) {
         url: streamUrl,
         referer: pending.pageUrl || pending.nativeRequest.referer || "",
       });
-      await rememberActiveJob(details.tabId, response);
-      await setTf1Status(details.tabId, "sent", "Téléchargement envoyé à ClipFlow.");
+      await rememberActiveJob(details.tabId, response, pending.nativeRequest.language);
+      await setTf1Status(
+        details.tabId,
+        "sent",
+        pending.nativeRequest.language === "en" ? "Download sent to ClipFlow." : "Téléchargement envoyé à ClipFlow.",
+      );
       await chrome.action.setBadgeText({ tabId: details.tabId, text: "✓" });
       await chrome.action.setBadgeBackgroundColor({ tabId: details.tabId, color: "#16803a" });
     }
@@ -400,16 +405,38 @@ function normalizedWebUrl(rawUrl, errorMessage = "Adresse de vidéo invalide.") 
   return url.href;
 }
 
+function interfaceLanguage(value) {
+  return value === "en" ? "en" : "fr";
+}
+
+function backgroundText(language, key) {
+  const messages = {
+    fr: {
+      engineUnavailable: "Le moteur ClipFlow est indisponible. Réinstallez l’application puis réessayez.",
+      refused: "ClipFlow n’a pas accepté la demande.", requestRefused: "Demande refusée.", invalidTab: "Onglet invalide.",
+      unknownAction: "Action inconnue.", invalidVideo: "Adresse de vidéo invalide.", invalidReferer: "Adresse de page d’origine invalide.",
+      chooseFolder: "Choisissez d’abord un dossier de destination.",
+    },
+    en: {
+      engineUnavailable: "The ClipFlow engine is unavailable. Reinstall the app and try again.",
+      refused: "ClipFlow did not accept the request.", requestRefused: "Request denied.", invalidTab: "Invalid tab.",
+      unknownAction: "Unknown action.", invalidVideo: "Invalid video address.", invalidReferer: "Invalid source page address.",
+      chooseFolder: "Choose a destination folder first.",
+    },
+  };
+  return messages[interfaceLanguage(language)][key];
+}
+
 function sendNativeMessage(message) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendNativeMessage(NATIVE_HOST, message, (response) => {
       const error = chrome.runtime.lastError;
       if (error) {
-        reject(new Error("Le moteur ClipFlow est indisponible. Réinstallez l’application puis réessayez."));
+        reject(new Error(backgroundText(message.language, "engineUnavailable")));
         return;
       }
       if (!response || response.ok !== true) {
-        reject(new Error(response?.error || "ClipFlow n’a pas accepté la demande."));
+        reject(new Error(response?.error || backgroundText(message.language, "refused")));
         return;
       }
       resolve(response);
@@ -418,13 +445,14 @@ function sendNativeMessage(message) {
 }
 
 async function handleMessage(message, sender) {
+  const language = interfaceLanguage(message?.language);
   if (sender.id !== chrome.runtime.id || !message || typeof message !== "object") {
-    throw new Error("Demande refusée.");
+    throw new Error(backgroundText(language, "requestRefused"));
   }
 
   if (message.type === "get_network_media") {
     const tabId = Number(message.tabId);
-    if (!Number.isInteger(tabId) || tabId < 0) throw new Error("Onglet invalide.");
+    if (!Number.isInteger(tabId) || tabId < 0) throw new Error(backgroundText(language, "invalidTab"));
     await networkMediaWrites;
     const key = networkMediaKey(tabId);
     const statusKey = tf1StatusKey(tabId);
@@ -434,10 +462,10 @@ async function handleMessage(message, sender) {
     return { ok: true, media, tf1Status: stored[statusKey] || null };
   }
   if (message.type === "choose_folder") {
-    return sendNativeMessage({ action: "choose_folder" });
+    return sendNativeMessage({ action: "choose_folder", language });
   }
   if (message.type === "check_update") {
-    return sendNativeMessage({ action: "check_update" });
+    return sendNativeMessage({ action: "check_update", language });
   }
   if (message.type === "install_update") {
     return sendNativeMessage({
@@ -445,11 +473,12 @@ async function handleMessage(message, sender) {
       release: Number(message.release),
       archiveAssetId: Number(message.archiveAssetId),
       checksumAssetId: Number(message.checksumAssetId),
+      language,
     });
   }
   if (message.type === "get_active_job") {
     const tabId = Number(message.tabId);
-    if (!Number.isInteger(tabId) || tabId < 0) throw new Error("Onglet invalide.");
+    if (!Number.isInteger(tabId) || tabId < 0) throw new Error(backgroundText(language, "invalidTab"));
     const key = activeJobKey(tabId);
     const stored = await chrome.storage.session.get(key);
     const job = stored[key] || null;
@@ -461,8 +490,8 @@ async function handleMessage(message, sender) {
   }
   if (message.type === "download_status") {
     const tabId = Number(message.tabId);
-    if (!Number.isInteger(tabId) || tabId < 0) throw new Error("Onglet invalide.");
-    const response = await sendNativeMessage({ action: "status", jobId: message.jobId });
+    if (!Number.isInteger(tabId) || tabId < 0) throw new Error(backgroundText(language, "invalidTab"));
+    const response = await sendNativeMessage({ action: "status", jobId: message.jobId, language });
     const key = activeJobKey(tabId);
     const stored = await chrome.storage.session.get(key);
     if (stored[key]) {
@@ -480,12 +509,12 @@ async function handleMessage(message, sender) {
     return response;
   }
   if (message.type !== "download") {
-    throw new Error("Action inconnue.");
+    throw new Error(backgroundText(language, "unknownAction"));
   }
 
-  const url = normalizedWebUrl(message.url);
+  const url = normalizedWebUrl(message.url, backgroundText(language, "invalidVideo"));
   const referer = message.referer
-    ? normalizedWebUrl(message.referer, "Adresse de page d’origine invalide.")
+    ? normalizedWebUrl(message.referer, backgroundText(language, "invalidReferer"))
     : "";
   const requestedQuality = QUALITY_KEYS.has(message.quality) ? message.quality : "best";
   const quality = requestedQuality === "audio" ? "audio" : "best";
@@ -499,7 +528,7 @@ async function handleMessage(message, sender) {
     ? message.sourceTitle.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 300)
     : "";
   if (destination === "custom" && !destinationPath) {
-    throw new Error("Choisissez d’abord un dossier de destination.");
+    throw new Error(backgroundText(language, "chooseFolder"));
   }
 
   const nativeRequest = {
@@ -510,6 +539,7 @@ async function handleMessage(message, sender) {
     destination,
     destinationPath,
     settingsVersion: message.settingsVersion === SETTINGS_VERSION ? SETTINGS_VERSION : 0,
+    language,
   };
   if (referer) nativeRequest.referer = referer;
   if (sourceTitle) nativeRequest.sourceTitle = sourceTitle;
@@ -527,14 +557,22 @@ async function handleMessage(message, sender) {
         expiresAt: Date.now() + TF1_PENDING_TTL,
       },
     });
-    await setTf1Status(tabId, "reloading", "Recharge automatique pour obtenir le flux HLS TF1…");
+    await setTf1Status(
+      tabId,
+      "reloading",
+      language === "en" ? "Automatically reloading to obtain the TF1 HLS stream…" : "Recharge automatique pour obtenir le flux HLS TF1…",
+    );
     await chrome.action.setBadgeText({ tabId, text: "…" });
     await chrome.action.setBadgeBackgroundColor({ tabId, color: "#1367d1" });
     await chrome.tabs.reload(tabId);
-    return { ok: true, preparing: true, destinationLabel: "ClipFlow après la préparation TF1" };
+    return {
+      ok: true,
+      preparing: true,
+      destinationLabel: language === "en" ? "ClipFlow after TF1 preparation" : "ClipFlow après la préparation TF1",
+    };
   }
   const response = await sendNativeMessage(nativeRequest);
-  await rememberActiveJob(tabId, response);
+  await rememberActiveJob(tabId, response, language);
   return response;
 }
 

@@ -25,7 +25,7 @@ import certifi
 
 GITHUB_OWNER = "Coraubanne"
 GITHUB_REPOSITORY = "clipflow"
-CURRENT_RELEASE = 67
+CURRENT_RELEASE = 68
 EXTENSION_ID = "emfjpphkcgnjldilcnieaoppmfpfkhfg"
 PREMIERE_PLUGIN_ID = "fr.clipflow.premiere.bridge"
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
@@ -279,7 +279,14 @@ def validate_bundle(root: Path, expected_release: int) -> dict[str, Path]:
         raise UpdateError("L’identité de l’application téléchargée est invalide.")
     extension_manifest = _read_json(extension / "manifest.json")
     premiere_manifest = _read_json(premiere / "manifest.json")
-    if extension_manifest.get("name") != "ClipFlow" or extension_manifest.get("key") is None:
+    extension_name = extension_manifest.get("name")
+    if extension_name == "__MSG_extensionName__":
+        locale = extension_manifest.get("default_locale")
+        if locale not in {"en", "fr"}:
+            raise UpdateError("L’extension Chrome téléchargée est invalide.")
+        localized = _read_json(extension / "_locales" / str(locale) / "messages.json")
+        extension_name = localized.get("extensionName", {}).get("message")
+    if extension_name != "ClipFlow" or extension_manifest.get("key") is None:
         raise UpdateError("L’extension Chrome téléchargée est invalide.")
     if premiere_manifest.get("id") != PREMIERE_PLUGIN_ID:
         raise UpdateError("Le module Premiere Pro téléchargé est invalide.")

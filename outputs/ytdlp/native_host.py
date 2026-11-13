@@ -24,6 +24,61 @@ PREMIERE_MEDIA_DIRECTORY = "Médias ClipFlow"
 PREMIERE_PLUGIN_ID = "fr.clipflow.premiere.bridge"
 
 
+ENGLISH_MESSAGES = {
+    "Préparation…": "Preparing…",
+    "Préparation du téléchargement…": "Preparing download…",
+    "Connexion au site vidéo…": "Connecting to the video site…",
+    "Page reçue · analyse de la vidéo…": "Page received · analyzing video…",
+    "Vérification de la vidéo auprès du site…": "Checking the video with the site…",
+    "Flux sélectionnés · téléchargement…": "Streams selected · downloading…",
+    "Assemblage audio et vidéo sans réencodage…": "Merging audio and video without re-encoding…",
+    "Téléchargement annulé": "Download cancelled",
+    "Le téléchargement n’a pas pu être terminé.": "The download could not be completed.",
+    "Cette source est protégée par DRM.": "This source is DRM-protected.",
+    "Connectez-vous au site dans Chrome, puis réessayez.": "Sign in to the site in Chrome, then try again.",
+    "Fichier prêt": "File ready",
+    "ClipFlow s’est rétabli après une erreur interne. Relancez le téléchargement.": "ClipFlow recovered from an internal error. Start the download again.",
+    "Cette page ne correspond pas à une vidéo téléchargeable.": "This page does not match a downloadable video.",
+    "Le dossier choisi n’est plus disponible.": "The selected folder is no longer available.",
+    "Choisissez un dossier de destination.": "Choose a destination folder.",
+    "Le projet Premiere Pro actif n’est pas encore enregistré.": "The active Premiere Pro project has not been saved yet.",
+    "Premiere Pro ne répond pas. Rouvrez le panneau ClipFlow dans Premiere.": "Premiere Pro is not responding. Reopen the ClipFlow panel in Premiere.",
+    "L’extension Chrome ClipFlow installée est introuvable.": "The installed ClipFlow Chrome extension could not be found.",
+    "L’application ClipFlow installée ne peut pas être mise à jour.": "The installed ClipFlow app cannot be updated.",
+    "Impossible de joindre GitHub. Vérifiez la connexion Internet.": "Unable to reach GitHub. Check your internet connection.",
+    "La mise à jour est corrompue; installation annulée.": "The update is corrupted; installation cancelled.",
+}
+
+
+def interface_language(message: object) -> str:
+    return "en" if isinstance(message, dict) and message.get("language") == "en" else "fr"
+
+
+def localized_message(text: object, language: str) -> str:
+    value = str(text)
+    if language != "en":
+        return value
+    if value in ENGLISH_MESSAGES:
+        return ENGLISH_MESSAGES[value]
+    replacements = (
+        ("Le moteur ClipFlow a redémarré après une erreur :", "The ClipFlow engine restarted after an error:"),
+        ("Connexion au site requise dans ", "Sign-in to the site is required in "),
+        ("Téléchargé · import dans Premiere Pro…", "Downloaded · importing into Premiere Pro…"),
+        ("Import Premiere Pro terminé", "Premiere Pro import complete"),
+        ("Import Premiere Pro encore en attente", "Premiere Pro import still pending"),
+        ("Reprise automatique ", "Automatic retry "),
+        ("le fichier partiel est conservé", "the partial file is preserved"),
+        ("nouvelle analyse ", "new analysis "),
+        ("audio original", "original audio"),
+        ("débit source", "source bitrate"),
+        ("sans conversion", "without conversion"),
+        ("reste ", "remaining "),
+    )
+    for french, english in replacements:
+        value = value.replace(french, english)
+    return value
+
+
 def is_public_web_url(value: object) -> bool:
     if not isinstance(value, str) or not value or len(value) > 8192:
         return False
@@ -189,6 +244,7 @@ def validated_download_job(message: dict[str, object], home: Path | None = None)
         "quality": str(quality),
         "destination": str(destination),
         "completionSound": message.get("completionSound", True) is not False,
+        "language": interface_language(message),
     }
     if premiere_project is not None:
         job["premiereProjectPath"] = str(premiere_project)
@@ -258,7 +314,7 @@ def read_status(message: dict[str, object]) -> dict[str, object]:
         "ok": True,
         "state": str(payload.get("state", "unknown")),
         "progress": max(0, min(100, int(payload.get("progress", 0)))),
-        "message": str(payload.get("message", ""))[:500],
+        "message": localized_message(payload.get("message", ""), interface_language(message))[:500],
         "updatedAt": int(payload.get("updatedAt", 0)),
     }
 
@@ -321,10 +377,10 @@ def queue_download(message: dict[str, object]) -> dict[str, object]:
     destination_path = Path(job["destination"])
     return {
         "ok": True,
-        "message": "Demande envoyée à ClipFlow.",
+        "message": "Request sent to ClipFlow." if interface_language(message) == "en" else "Demande envoyée à ClipFlow.",
         "destination": str(destination_path),
         "destinationLabel": (
-            "Premiere Pro · Médias ClipFlow"
+            ("Premiere Pro · ClipFlow Media" if interface_language(message) == "en" else "Premiere Pro · Médias ClipFlow")
             if "premiereProjectPath" in job
             else destination_path.name or str(destination_path)
         ),
@@ -332,9 +388,10 @@ def queue_download(message: dict[str, object]) -> dict[str, object]:
     }
 
 
-def choose_folder() -> dict[str, object]:
+def choose_folder(language: str = "fr") -> dict[str, object]:
+    prompt = "Choose where ClipFlow will save videos" if language == "en" else "Choisissez où ClipFlow enregistrera les vidéos"
     script = (
-        'POSIX path of (choose folder with prompt "Choisissez où ClipFlow enregistrera les vidéos" '
+        f'POSIX path of (choose folder with prompt "{prompt}" '
         "default location (path to downloads folder))"
     )
     result = subprocess.run(
@@ -346,10 +403,10 @@ def choose_folder() -> dict[str, object]:
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError("Sélection du dossier annulée.")
+        raise RuntimeError("Folder selection cancelled." if language == "en" else "Sélection du dossier annulée.")
     selected = Path(result.stdout.rstrip("\n"))
     if not selected.is_absolute() or not selected.is_dir():
-        raise RuntimeError("Le dossier sélectionné est invalide.")
+        raise RuntimeError("The selected folder is invalid." if language == "en" else "Le dossier sélectionné est invalide.")
     return {"ok": True, "path": str(selected), "label": selected.name or str(selected)}
 
 
@@ -357,12 +414,13 @@ def handle_message(message: object) -> dict[str, object]:
     if not isinstance(message, dict):
         raise ValueError("Message invalide.")
     action = message.get("action")
+    language = interface_language(message)
     if action == "download":
         return queue_download(message)
     if action == "status":
         return read_status(message)
     if action == "choose_folder":
-        return choose_folder()
+        return choose_folder(language)
     if action == "check_update":
         from updater import latest_release
 
@@ -370,12 +428,15 @@ def handle_message(message: object) -> dict[str, object]:
     if action == "install_update":
         from updater import install_release
 
-        return install_release(
+        response = install_release(
             int(message.get("release", 0)),
             int(message.get("archiveAssetId", 0)),
             int(message.get("checksumAssetId", 0)),
             app_bundle(),
         )
+        if language == "en" and response.get("installed"):
+            response["message"] = "ClipFlow was updated. Restart Premiere Pro if it was open."
+        return response
     if action == "ping":
         return {"ok": True, "version": "2.1"}
     raise ValueError("Action inconnue.")
@@ -404,10 +465,12 @@ def write_message(message: dict[str, object], stream: object = None) -> None:
 
 
 def main() -> int:
+    message: object = {}
     try:
-        response = handle_message(read_message())
+        message = read_message()
+        response = handle_message(message)
     except Exception as error:  # Chrome must always receive a structured response.
-        response = {"ok": False, "error": str(error)}
+        response = {"ok": False, "error": localized_message(error, interface_language(message))}
     write_message(response)
     return 0
 

@@ -1,5 +1,5 @@
-const SETTINGS_VERSION = 6;
-const EXPECTED_EXTENSION_VERSION = "2.8.9";
+const SETTINGS_VERSION = 7;
+const EXPECTED_EXTENSION_VERSION = "2.9.0";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
@@ -13,6 +13,76 @@ const DEFAULT_SETTINGS = {
   destination: "downloads",
   destinationPath: "",
   destinationLabel: "Téléchargements",
+  language: "auto",
+};
+
+const UI_TEXT = {
+  fr: {
+    openSettings: "Ouvrir les réglages", closeSettings: "Fermer les réglages", settings: "Réglages",
+    downloadSettings: "Réglages du téléchargement", language: "Langue", languageAuto: "Automatique",
+    saveTo: "Enregistrer dans", destinationFolder: "Dossier de destination", downloads: "Téléchargements",
+    movies: "Films", desktop: "Bureau", otherFolder: "Autre dossier…", chosenFolder: "Dossier choisi",
+    completionSoundTitle: "Jouer un son à la fin du téléchargement", completionSound: "Son de fin",
+    whenReady: "Quand le fichier est prêt", checkUpdate: "Chercher une mise à jour",
+    updateHint: "ClipFlow vérifie les releases GitHub sécurisées.", fileOption: "Option du fichier",
+    audioOnly: "Audio uniquement", mp3NoVideo: "MP3 sans vidéo", download: "Téléchargement",
+    preparing: "Préparation…", analyzingPage: "Analyse de la page…", rescan: "Relancer l’analyse",
+    searchingPlayers: "Recherche des lecteurs vidéo…", engineUnavailable: "Le moteur ClipFlow est indisponible.",
+    updateFailed: "La demande de mise à jour a échoué.", installVersion: "Installer ClipFlow v{version}",
+    updateAvailable: "Nouvelle version disponible · application, extension et module Premiere Pro.",
+    upToDate: "ClipFlow v{version} est à jour.", checking: "Vérification…",
+    secureGithub: "Connexion sécurisée à GitHub…", retry: "Réessayer", installing: "Installation…",
+    installingDetail: "Téléchargement, vérification et installation en cours…", updateInstalled: "Mise à jour installée.",
+    updateComplete: "Mise à jour terminée", retryInstall: "Réessayer l’installation", toFolder: "Vers {folder}",
+    stateUnavailable: "État momentanément indisponible.", downloading: "Téléchargement en cours…",
+    downloadComplete: "Téléchargement terminé", complete: "Terminé", fileReady: "Fichier prêt.",
+    downloadCancelled: "Téléchargement annulé", downloadError: "Échec du téléchargement",
+    downloadFailed: "Le téléchargement a échoué.", protected: "Protégée",
+    drmManifest: "Le manifeste de cette source est chiffré par DRM.", downloadConvert: "Télécharger et convertir en MP4",
+    send: "Envoi…", unavailable: "ClipFlow est indisponible.", tf1Preparing: "Préparation automatique du flux TF1…",
+    startedBackground: "Téléchargement démarré en arrière-plan.", inProgress: "En cours",
+    chromePageUnsupported: "Cette page Chrome ne peut pas être analysée.", pageNoResponse: "La page n’a pas répondu à l’analyse.",
+    hlsUnavailable: "Le flux HLS TF1 est indisponible.", drmPlayer: "Un lecteur protégé par DRM a été détecté. Son flux chiffré ne peut pas être téléchargé.",
+    noVideo: "Aucune vidéo visible. Lancez la lecture quelques secondes puis relancez l’analyse.",
+    scanFailed: "Impossible d’analyser cette page.", webmConfirm: "Cette vidéo est au format WebM. ClipFlow doit la convertir en MP4 pour la rendre compatible avec macOS et Premiere Pro. Voulez-vous continuer ?",
+    detectedOne: "1 vidéo détectée{extras}.", detectedMany: "{count} vidéos détectées{extras}.",
+    drmIgnored: "lecteur DRM ignoré", hiddenVariantOne: "1 variante technique masquée", hiddenVariantMany: "{count} variantes techniques masquées",
+    bestSource: "meilleure source détectée", video: "Vidéo", integratedPlayer: "Lecteur intégré",
+    integratedVideoPlayer: "Lecteur vidéo dans un cadre intégré", kindVideo: "VIDÉO",
+  },
+  en: {
+    openSettings: "Open settings", closeSettings: "Close settings", settings: "Settings",
+    downloadSettings: "Download settings", language: "Language", languageAuto: "Automatic",
+    saveTo: "Save to", destinationFolder: "Destination folder", downloads: "Downloads",
+    movies: "Movies", desktop: "Desktop", otherFolder: "Other folder…", chosenFolder: "Selected folder",
+    completionSoundTitle: "Play a sound when the download finishes", completionSound: "Completion sound",
+    whenReady: "When the file is ready", checkUpdate: "Check for updates",
+    updateHint: "ClipFlow checks secure GitHub releases.", fileOption: "File option",
+    audioOnly: "Audio only", mp3NoVideo: "MP3 without video", download: "Download",
+    preparing: "Preparing…", analyzingPage: "Analyzing page…", rescan: "Scan again",
+    searchingPlayers: "Looking for video players…", engineUnavailable: "The ClipFlow engine is unavailable.",
+    updateFailed: "The update request failed.", installVersion: "Install ClipFlow v{version}",
+    updateAvailable: "New version available · app, extension and Premiere Pro panel.",
+    upToDate: "ClipFlow v{version} is up to date.", checking: "Checking…",
+    secureGithub: "Securely connecting to GitHub…", retry: "Try again", installing: "Installing…",
+    installingDetail: "Downloading, verifying and installing…", updateInstalled: "Update installed.",
+    updateComplete: "Update complete", retryInstall: "Retry installation", toFolder: "To {folder}",
+    stateUnavailable: "Status temporarily unavailable.", downloading: "Downloading…",
+    downloadComplete: "Download complete", complete: "Done", fileReady: "File ready.",
+    downloadCancelled: "Download cancelled", downloadError: "Download failed",
+    downloadFailed: "The download failed.", protected: "Protected",
+    drmManifest: "This source manifest is DRM-encrypted.", downloadConvert: "Download and convert to MP4",
+    send: "Sending…", unavailable: "ClipFlow is unavailable.", tf1Preparing: "Automatically preparing the TF1 stream…",
+    startedBackground: "Download started in the background.", inProgress: "In progress",
+    chromePageUnsupported: "This Chrome page cannot be analyzed.", pageNoResponse: "The page did not respond to analysis.",
+    hlsUnavailable: "The TF1 HLS stream is unavailable.", drmPlayer: "A DRM-protected player was detected. Its encrypted stream cannot be downloaded.",
+    noVideo: "No visible video. Start playback for a few seconds, then scan again.",
+    scanFailed: "Unable to analyze this page.", webmConfirm: "This video uses WebM. ClipFlow must convert it to MP4 for macOS and Premiere Pro compatibility. Continue?",
+    detectedOne: "1 video detected{extras}.", detectedMany: "{count} videos detected{extras}.",
+    drmIgnored: "DRM player ignored", hiddenVariantOne: "1 technical variant hidden", hiddenVariantMany: "{count} technical variants hidden",
+    bestSource: "best source detected", video: "Video", integratedPlayer: "Embedded player",
+    integratedVideoPlayer: "Video player in an embedded frame", kindVideo: "VIDEO",
+  },
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -20,6 +90,7 @@ let activePage = null;
 
 const audioOnly = document.getElementById("audio-only");
 const completionSound = document.getElementById("completion-sound");
+const language = document.getElementById("language");
 const destination = document.getElementById("destination");
 const settingsToggle = document.getElementById("settings-toggle");
 const settingsPanel = document.getElementById("settings-panel");
@@ -37,14 +108,39 @@ let displayedProgress = 0;
 let progressAnimation = null;
 let progressPoll = null;
 let availableUpdate = null;
+let lastUpdateResponse = null;
+
+function activeLanguage() {
+  if (settings.language === "fr" || settings.language === "en") return settings.language;
+  return String(chrome.i18n.getUILanguage?.() || navigator.language || "en").toLowerCase().startsWith("fr") ? "fr" : "en";
+}
+
+function t(key, values = {}) {
+  const text = UI_TEXT[activeLanguage()]?.[key] || UI_TEXT.fr[key] || key;
+  return Object.entries(values).reduce((result, [name, value]) => result.replaceAll(`{${name}}`, String(value)), text);
+}
+
+function applyLanguage() {
+  document.documentElement.lang = activeLanguage();
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    element.textContent = t(element.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((element) => {
+    element.title = t(element.dataset.i18nTitle);
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((element) => {
+    element.setAttribute("aria-label", t(element.dataset.i18nAria));
+  });
+  if (lastUpdateResponse) displayUpdate(lastUpdateResponse);
+}
 
 function runtimeMessage(message) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(message, (response) => {
       if (chrome.runtime.lastError) {
-        reject(new Error("Le moteur ClipFlow est indisponible."));
+        reject(new Error(t("engineUnavailable")));
       } else if (!response?.ok) {
-        reject(new Error(response?.error || "La demande de mise à jour a échoué."));
+        reject(new Error(response?.error || t("updateFailed")));
       } else {
         resolve(response);
       }
@@ -53,14 +149,15 @@ function runtimeMessage(message) {
 }
 
 function displayUpdate(response) {
+  lastUpdateResponse = response;
   availableUpdate = response.available ? response : null;
   settingsToggle.classList.toggle("update-ready", Boolean(availableUpdate));
   if (availableUpdate) {
-    checkUpdate.textContent = `Installer ClipFlow v${response.latestRelease}`;
-    updateStatus.textContent = "Nouvelle version disponible · application, extension et module Premiere Pro.";
+    checkUpdate.textContent = t("installVersion", { version: response.latestRelease });
+    updateStatus.textContent = t("updateAvailable");
   } else {
-    checkUpdate.textContent = "Chercher une mise à jour";
-    updateStatus.textContent = `ClipFlow v${response.currentRelease} est à jour.`;
+    checkUpdate.textContent = t("checkUpdate");
+    updateStatus.textContent = t("upToDate", { version: response.currentRelease });
   }
 }
 
@@ -74,16 +171,16 @@ async function findUpdate(manual = false) {
     }
   }
   checkUpdate.disabled = true;
-  checkUpdate.textContent = "Vérification…";
-  updateStatus.textContent = "Connexion sécurisée à GitHub…";
+  checkUpdate.textContent = t("checking");
+  updateStatus.textContent = t("secureGithub");
   try {
-    const response = await runtimeMessage({ type: "check_update" });
+    const response = await runtimeMessage({ type: "check_update", language: activeLanguage() });
     const cached = { ...response, checkedAt: Date.now() };
     await chrome.storage.local.set({ clipFlowUpdateCheck: cached });
     displayUpdate(cached);
   } catch (error) {
     updateStatus.textContent = error.message;
-    checkUpdate.textContent = "Réessayer";
+    checkUpdate.textContent = t("retry");
   } finally {
     checkUpdate.disabled = false;
   }
@@ -95,22 +192,25 @@ async function installAvailableUpdate() {
     return;
   }
   checkUpdate.disabled = true;
-  checkUpdate.textContent = "Installation…";
-  updateStatus.textContent = "Téléchargement, vérification et installation en cours…";
+  checkUpdate.textContent = t("installing");
+  updateStatus.textContent = t("installingDetail");
   try {
     const response = await runtimeMessage({
       type: "install_update",
       release: availableUpdate.latestRelease,
       archiveAssetId: availableUpdate.archiveAssetId,
       checksumAssetId: availableUpdate.checksumAssetId,
+      language: activeLanguage(),
     });
     await chrome.storage.local.remove("clipFlowUpdateCheck");
-    updateStatus.textContent = response.message || "Mise à jour installée.";
-    checkUpdate.textContent = "Mise à jour terminée";
+    updateStatus.textContent = activeLanguage() === "en"
+      ? "ClipFlow was updated. Restart Premiere Pro if it was open."
+      : (response.message || t("updateInstalled"));
+    checkUpdate.textContent = t("updateComplete");
     setTimeout(() => chrome.runtime.reload(), 900);
   } catch (error) {
     updateStatus.textContent = error.message;
-    checkUpdate.textContent = "Réessayer l’installation";
+    checkUpdate.textContent = t("retryInstall");
     checkUpdate.disabled = false;
   }
 }
@@ -118,7 +218,7 @@ async function installAvailableUpdate() {
 function setSettingsOpen(open) {
   settingsPanel.hidden = !open;
   settingsToggle.setAttribute("aria-expanded", String(open));
-  settingsToggle.setAttribute("aria-label", open ? "Fermer les réglages" : "Ouvrir les réglages");
+  settingsToggle.setAttribute("aria-label", open ? t("closeSettings") : t("openSettings"));
 }
 
 async function saveSettings() {
@@ -141,17 +241,44 @@ async function loadSettings() {
   delete settings.quality;
   audioOnly.checked = settings.audioOnly;
   completionSound.checked = settings.completionSound;
+  language.value = ["auto", "fr", "en"].includes(settings.language) ? settings.language : "auto";
+  settings.language = language.value;
+  applyLanguage();
+  if (settings.destination !== "custom") {
+    const labels = { downloads: "downloads", movies: "movies", desktop: "desktop" };
+    settings.destinationLabel = labels[settings.destination]
+      ? t(labels[settings.destination])
+      : "Premiere Pro";
+  }
   if (settings.destination === "custom" && settings.destinationPath) {
     const option = document.createElement("option");
     option.value = "custom";
-    option.textContent = settings.destinationLabel || "Dossier choisi";
+    option.textContent = settings.destinationLabel || t("chosenFolder");
     destination.insertBefore(option, destination.querySelector('option[value="choose"]'));
   }
   destination.value = settings.destination;
   await saveSettings();
 }
 
-function detectVideosOnPage() {
+function detectVideosOnPage(uiLanguage = "fr") {
+  const copy = uiLanguage === "en" ? {
+    detectedVideo: "Detected video", youtubePlayer: "YouTube player", bestQuality: "best quality via yt-dlp",
+    dailymotionPlayer: "Dailymotion player", htmlPlayer: "HTML5 player", video: "Video",
+    substackSource: "Substack MP4 source", fromPage: "extracted from page", declaredStream: "Stream declared by page",
+    linkedMedia: "Linked media", mediaLink: "Media link found on page", declaredMedia: "Media declared in page data",
+    embeddedPlayer: "Embedded player", embeddedPlayerPage: "Embedded video player page", originalPage: "Extracted from original page",
+    mediaStream: "Media stream", detectedStream: "Detected {kind} stream", network: "network", networkActivity: "network activity",
+  } : {
+    detectedVideo: "Vidéo détectée", youtubePlayer: "lecteur YouTube", bestQuality: "meilleure qualité via yt-dlp",
+    dailymotionPlayer: "lecteur Dailymotion", htmlPlayer: "lecteur HTML5", video: "Vidéo",
+    substackSource: "source MP4 Substack", fromPage: "extraction depuis la page", declaredStream: "Flux déclaré par la page",
+    linkedMedia: "Média lié", mediaLink: "Lien média présent dans la page", declaredMedia: "Média déclaré dans les données de la page",
+    embeddedPlayer: "Lecteur intégré", embeddedPlayerPage: "Page du lecteur vidéo intégré", originalPage: "Extraction depuis la page d’origine",
+    mediaStream: "Flux média", detectedStream: "Flux {kind} détecté", network: "réseau", networkActivity: "activité réseau",
+  };
+  const detectorText = (key, values = {}) => Object.entries(values).reduce(
+    (result, [name, value]) => result.replaceAll(`{${name}}`, String(value)), copy[key],
+  );
   const pageUrl = location.href;
   const title = document.title || location.hostname;
   const found = [];
@@ -258,7 +385,7 @@ function detectVideosOnPage() {
     }
     const candidate = {
       url,
-      label: label || title || "Vidéo détectée",
+      label: label || title || copy.detectedVideo,
       detail: detail || resolved.hostname,
       kind,
       pageFallback: Boolean(options.pageFallback),
@@ -282,9 +409,9 @@ function detectVideosOnPage() {
     const player = videoElements[0];
     const width = player?.videoWidth || player?.clientWidth || 0;
     const height = player?.videoHeight || player?.clientHeight || 0;
-    const dimensions = width && height ? `${width}×${height}` : "lecteur YouTube";
+    const dimensions = width && height ? `${width}×${height}` : copy.youtubePlayer;
     if (isYouTubeVideoPage(pageUrl)) {
-      add(pageUrl, title, `${dimensions} · meilleure qualité via yt-dlp`, {
+      add(pageUrl, title, `${dimensions} · ${copy.bestQuality}`, {
         kind: "PAGE",
         pageFallback: true,
         priority: 120,
@@ -298,9 +425,9 @@ function detectVideosOnPage() {
     const player = videoElements[0];
     const width = player?.videoWidth || player?.clientWidth || 0;
     const height = player?.videoHeight || player?.clientHeight || 0;
-    const dimensions = width && height ? `${width}×${height}` : "lecteur Dailymotion";
+    const dimensions = width && height ? `${width}×${height}` : copy.dailymotionPlayer;
     if (isDailymotionVideoPage(pageUrl)) {
-      add(pageUrl, title, `${dimensions} · meilleure qualité via yt-dlp`, {
+      add(pageUrl, title, `${dimensions} · ${copy.bestQuality}`, {
         kind: "PAGE",
         pageFallback: true,
         priority: 125,
@@ -315,7 +442,7 @@ function detectVideosOnPage() {
   videoElements.forEach((video, index) => {
     const width = video.videoWidth || video.clientWidth || 0;
     const height = video.videoHeight || video.clientHeight || 0;
-    const dimensions = width && height ? `${width}×${height}` : "lecteur HTML5";
+    const dimensions = width && height ? `${width}×${height}` : copy.htmlPlayer;
     const substackPlayer = /(^|\.)substack\.com$/i.test(location.hostname)
       ? video.closest("[data-media-upload-id]")
       : null;
@@ -335,7 +462,7 @@ function detectVideosOnPage() {
     const label = nearbyLabel
       || video.getAttribute("aria-label")
       || video.getAttribute("title")
-      || `Vidéo ${index + 1}`;
+      || `${copy.video} ${index + 1}`;
     const rect = video.getBoundingClientRect();
     const playerKey = visibleVideoElements.length
       ? `visual-${Math.round(rect.left / 40)}-${Math.round(rect.top / 40)}-${Math.round(rect.width / 40)}-${Math.round(rect.height / 40)}`
@@ -351,7 +478,7 @@ function detectVideosOnPage() {
     const directSources = sources.filter((source) => /^https?:/i.test(source));
     directSources.forEach((source) => {
       const isSubstackMp4 = Boolean(substackMediaId) && source.includes(`/video/upload/${substackMediaId}/`);
-      add(source, label, isSubstackMp4 ? `${dimensions} · source MP4 Substack` : `${dimensions} · lecteur HTML5`, {
+      add(source, label, isSubstackMp4 ? `${dimensions} · ${copy.substackSource}` : `${dimensions} · ${copy.htmlPlayer}`, {
         priority: isSubstackMp4 ? 130 : 100,
         playerKey,
         source: isSubstackMp4 ? "substack" : "player",
@@ -361,7 +488,7 @@ function detectVideosOnPage() {
         mediaRole: "audio-video",
       });
     });
-    add(pageUrl, label, `${dimensions} · extraction depuis la page`, {
+    add(pageUrl, label, `${dimensions} · ${copy.fromPage}`, {
       kind: "PAGE",
       pageFallback: true,
       priority: directSources.length ? 55 : 75,
@@ -379,7 +506,7 @@ function detectVideosOnPage() {
     'meta[name="twitter:player:stream"]',
   ]) {
     document.querySelectorAll(selector).forEach((meta) => {
-      add(meta.content, title, "Flux déclaré par la page", { priority: 90, source: "metadata" });
+      add(meta.content, title, copy.declaredStream, { priority: 90, source: "metadata" });
     });
   }
 
@@ -388,7 +515,7 @@ function detectVideosOnPage() {
     element.href || element.src
   )).filter(Boolean);
   linkedMedia.filter((href) => mediaPattern.test(href)).slice(0, 30).forEach((href, index) => {
-    add(href, `Média lié ${index + 1}`, "Lien média présent dans la page", { priority: 70, source: "link" });
+    add(href, `${copy.linkedMedia} ${index + 1}`, copy.mediaLink, { priority: 70, source: "link" });
   });
 
   let structuredVideoIndex = 0;
@@ -416,7 +543,7 @@ function detectVideosOnPage() {
         structuredVideoIndex += 1;
         for (const property of ["contentUrl", "embedUrl", "url"]) {
           if (!audioOnlyObject && typeof value[property] === "string") {
-            add(value[property], value.name || `Vidéo ${structuredVideoIndex}`, "Média déclaré dans les données de la page", {
+            add(value[property], value.name || `${copy.video} ${structuredVideoIndex}`, copy.declaredMedia, {
               priority: 85,
               source: "structured",
               playerKey: structuredKey,
@@ -430,7 +557,7 @@ function detectVideosOnPage() {
   });
 
   embeddedPlayers.forEach((frame, index) => {
-    add(frame.src, `Lecteur intégré ${index + 1}`, "Page du lecteur vidéo intégré", {
+    add(frame.src, `${copy.embeddedPlayer} ${index + 1}`, copy.embeddedPlayerPage, {
       kind: "PLAYER",
       pageFallback: true,
       priority: 65,
@@ -440,7 +567,7 @@ function detectVideosOnPage() {
   });
 
   if (!videoElements.length && embeddedPlayers.length === 1) {
-    add(pageUrl, title, "Extraction depuis la page d’origine", {
+    add(pageUrl, title, copy.originalPage, {
       kind: "PAGE",
       pageFallback: true,
       priority: 80,
@@ -465,7 +592,7 @@ function detectVideosOnPage() {
     const isDirectMedia = ["MP4", "WEBM", "VIDÉO", "AUDIO"].includes(kind);
     const wasLoadedByMedia = ["video", "audio", "media"].includes(initiator);
     if (!isStream && !isDirectMedia && !wasLoadedByMedia) return;
-    add(entry.name, `${kind === "FLUX" ? "Flux média" : `Flux ${kind}`} détecté`, `${entry.name.split("/")[2] || "réseau"} · activité réseau`, {
+    add(entry.name, kind === "FLUX" ? copy.mediaStream : detectorText("detectedStream", { kind }), `${entry.name.split("/")[2] || copy.network} · ${copy.networkActivity}`, {
       kind: hiddenDelivery ? "VIDÉO" : (kind === "FLUX" ? "RÉSEAU" : kind),
       priority: isStream ? 115 : (wasLoadedByMedia ? 105 : 95),
       fromNetwork: true,
@@ -581,44 +708,44 @@ function animateProgress(target) {
   }, 24);
 }
 
-function showProgress(jobId, tabId, destinationLabel = "Téléchargements", button = null, feedback = null) {
+function showProgress(jobId, tabId, destinationLabel = t("downloads"), button = null, feedback = null) {
   if (!jobId || !Number.isInteger(Number(tabId))) return;
   progressSection.hidden = false;
-  progressLabel.textContent = `Vers ${destinationLabel}`;
-  progressDetail.textContent = "Préparation…";
+  progressLabel.textContent = t("toFolder", { folder: destinationLabel });
+  progressDetail.textContent = t("preparing");
   displayedProgress = Math.max(1, displayedProgress);
   progressPercent.textContent = `${displayedProgress} %`;
   animateProgress(displayedProgress);
   if (progressPoll) clearTimeout(progressPoll);
 
   const poll = () => {
-    chrome.runtime.sendMessage({ type: "download_status", jobId, tabId: Number(tabId) }, (response) => {
+    chrome.runtime.sendMessage({ type: "download_status", jobId, tabId: Number(tabId), language: activeLanguage() }, (response) => {
       if (chrome.runtime.lastError || !response?.ok) {
-        progressDetail.textContent = response?.error || "État momentanément indisponible.";
+        progressDetail.textContent = response?.error || t("stateUnavailable");
         progressPoll = setTimeout(poll, 1200);
         return;
       }
       animateProgress(response.progress);
-      progressDetail.textContent = response.message || "Téléchargement en cours…";
+      progressDetail.textContent = response.message || t("downloading");
       if (response.state === "complete") {
         animateProgress(100);
-        progressLabel.textContent = "Téléchargement terminé";
-        if (button) button.textContent = "Terminé";
+        progressLabel.textContent = t("downloadComplete");
+        if (button) button.textContent = t("complete");
         if (feedback) {
           feedback.dataset.kind = "success";
-          feedback.textContent = "Fichier prêt.";
+          feedback.textContent = t("fileReady");
         }
         return;
       }
       if (response.state === "error" || response.state === "cancelled") {
-        progressLabel.textContent = response.state === "cancelled" ? "Téléchargement annulé" : "Échec du téléchargement";
+        progressLabel.textContent = response.state === "cancelled" ? t("downloadCancelled") : t("downloadError");
         if (button) {
           button.disabled = false;
-          button.textContent = "Réessayer";
+          button.textContent = t("retry");
         }
         if (feedback) {
           feedback.dataset.kind = "error";
-          feedback.textContent = response.message || "Le téléchargement a échoué.";
+          feedback.textContent = response.message || t("downloadFailed");
         }
         return;
       }
@@ -629,7 +756,7 @@ function showProgress(jobId, tabId, destinationLabel = "Téléchargements", butt
 }
 
 function restoreActiveProgress(tabId) {
-  chrome.runtime.sendMessage({ type: "get_active_job", tabId }, (response) => {
+    chrome.runtime.sendMessage({ type: "get_active_job", tabId, language: activeLanguage() }, (response) => {
     const job = response?.job;
     if (chrome.runtime.lastError || !response?.ok || !job?.jobId) return;
     if (Date.now() - Number(job.updatedAt || 0) > 24 * 60 * 60 * 1000) return;
@@ -655,7 +782,7 @@ function createVideoCard(video, index) {
   heading.className = "video-heading";
   const kind = document.createElement("span");
   kind.className = "video-kind";
-  kind.textContent = video.kind || "VIDÉO";
+  kind.textContent = video.kind === "VIDÉO" ? t("kindVideo") : (video.kind || t("kindVideo"));
   const title = document.createElement("div");
   title.className = "video-title";
   title.textContent = video.label;
@@ -667,17 +794,17 @@ function createVideoCard(video, index) {
   button.type = "button";
   button.className = "download";
   const defaultButtonLabel = requiresWebmConversion(video)
-    ? "Télécharger et convertir en MP4"
-    : "Télécharger";
+    ? t("downloadConvert")
+    : t("download");
   button.textContent = defaultButtonLabel;
   const feedback = document.createElement("div");
   feedback.className = "video-feedback";
 
   if (video.drmProtected) {
     button.disabled = true;
-    button.textContent = "Protégée";
+    button.textContent = t("protected");
     feedback.dataset.kind = "error";
-    feedback.textContent = "Le manifeste de cette source est chiffré par DRM.";
+    feedback.textContent = t("drmManifest");
     card.dataset.index = String(index);
     card.append(heading, detail, button, feedback);
     return card;
@@ -686,12 +813,12 @@ function createVideoCard(video, index) {
   button.addEventListener("click", () => {
     if (requiresWebmConversion(video)) {
       const accepted = window.confirm(
-        "Cette vidéo est au format WebM. ClipFlow doit la convertir en MP4 pour la rendre compatible avec macOS et Premiere Pro. Voulez-vous continuer ?",
+        t("webmConfirm"),
       );
       if (!accepted) return;
     }
     button.disabled = true;
-    button.textContent = "Envoi…";
+    button.textContent = t("send");
     feedback.textContent = "";
     chrome.runtime.sendMessage({
       type: "download",
@@ -704,20 +831,21 @@ function createVideoCard(video, index) {
       destination: settings.destination,
       destinationPath: settings.destinationPath,
       settingsVersion: SETTINGS_VERSION,
+      language: activeLanguage(),
     }, (response) => {
       button.disabled = false;
       button.textContent = defaultButtonLabel;
       if (chrome.runtime.lastError || !response?.ok) {
         feedback.dataset.kind = "error";
-        feedback.textContent = response?.error || "ClipFlow est indisponible.";
+        feedback.textContent = response?.error || t("unavailable");
         return;
       }
       feedback.dataset.kind = "success";
       feedback.textContent = response.preparing
-        ? "Préparation automatique du flux TF1…"
-        : "Téléchargement démarré en arrière-plan.";
+        ? t("tf1Preparing")
+        : t("startedBackground");
       if (response.jobId) {
-        button.textContent = "En cours";
+        button.textContent = t("inProgress");
         showProgress(response.jobId, activePage.tabId, response.destinationLabel, button, feedback);
       } else {
         button.disabled = false;
@@ -733,13 +861,13 @@ function createVideoCard(video, index) {
 
 async function scan() {
   videos.replaceChildren();
-  pageTitle.textContent = "Analyse de la page…";
-  setStatus("Recherche des lecteurs vidéo…");
+  pageTitle.textContent = t("analyzingPage");
+  setStatus(t("searchingPlayers"));
   rescan.disabled = true;
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id || !/^https?:/i.test(tab.url || "")) {
-      throw new Error("Cette page Chrome ne peut pas être analysée.");
+      throw new Error(t("chromePageUnsupported"));
     }
     restoreActiveProgress(tab.id);
     let results;
@@ -747,15 +875,17 @@ async function scan() {
       results = await chrome.scripting.executeScript({
         target: { tabId: tab.id, allFrames: true },
         func: detectVideosOnPage,
+        args: [activeLanguage()],
       });
     } catch (_frameError) {
       results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: detectVideosOnPage,
+        args: [activeLanguage()],
       });
     }
     const mainResult = results.find((result) => result.frameId === 0)?.result;
-    if (!mainResult) throw new Error("La page n’a pas répondu à l’analyse.");
+    if (!mainResult) throw new Error(t("pageNoResponse"));
     const topPlayerKeys = new Set(mainResult.videos.map((video) => video.playerKey).filter(Boolean));
     const singleEmbeddedPlayer = topPlayerKeys.has("embed-0")
       && !Array.from(topPlayerKeys).some((key) => /^embed-[1-9]\d*$/.test(key));
@@ -776,8 +906,8 @@ async function scan() {
         }
         if (injection.frameId !== 0 && video.pageFallback && video.kind === "PAGE") {
           video.kind = "PLAYER";
-          video.label = frame.pageTitle || "Lecteur intégré";
-          video.detail = "Lecteur vidéo dans un cadre intégré";
+          video.label = frame.pageTitle || t("integratedPlayer");
+          video.detail = t("integratedVideoPlayer");
           video.priority = Math.max(65, video.priority || 0);
         }
         const identity = `${video.url}|${video.playerKey || ""}`;
@@ -788,7 +918,7 @@ async function scan() {
     let monitoredMedia = [];
     let tf1Status = null;
     try {
-      const monitored = await chrome.runtime.sendMessage({ type: "get_network_media", tabId: tab.id });
+      const monitored = await chrome.runtime.sendMessage({ type: "get_network_media", tabId: tab.id, language: activeLanguage() });
       if (monitored?.ok) {
         if (Array.isArray(monitored.media)) monitoredMedia = monitored.media;
         tf1Status = monitored.tf1Status || null;
@@ -808,7 +938,7 @@ async function scan() {
       && !allCandidates.some((video) => video.source === "tf1-hls");
     if (recentTf1Error) {
       pageTitle.textContent = tab.title || mainResult.pageTitle;
-      setStatus(tf1Status.message || "Le flux HLS TF1 est indisponible.", "error");
+      setStatus(tf1Status.message || t("hlsUnavailable"), "error");
       return;
     }
     const filtered = selectRealVideos(allCandidates);
@@ -816,9 +946,9 @@ async function scan() {
     const selectedVideos = filtered.videos.map((video, index) => ({
       ...video,
       label: multipleVideos
-        ? (video.label || `Vidéo ${index + 1}`)
+        ? (video.label || `${t("video")} ${index + 1}`)
         : (tab.title || mainResult.pageTitle || video.label),
-      detail: `${video.kind} · meilleure source détectée`,
+      detail: `${video.kind === "VIDÉO" ? t("kindVideo") : video.kind} · ${t("bestSource")}`,
     }));
     activePage = {
       tabId: tab.id,
@@ -832,21 +962,22 @@ async function scan() {
     pageTitle.textContent = activePage.pageTitle;
     if (!activePage.videos.length) {
       if (activePage.drmDetected) {
-        setStatus("Un lecteur protégé par DRM a été détecté. Son flux chiffré ne peut pas être téléchargé.", "warning");
+        setStatus(t("drmPlayer"), "warning");
       } else {
-        setStatus("Aucune vidéo visible. Lancez la lecture quelques secondes puis relancez l’analyse.");
+        setStatus(t("noVideo"));
       }
       return;
     }
     const count = activePage.videos.length;
-    const drmNote = activePage.drmDetected ? " · lecteur DRM ignoré" : "";
-    const filteredNote = activePage.hiddenSourceCount
-      ? ` · ${activePage.hiddenSourceCount} variante${activePage.hiddenSourceCount > 1 ? "s" : ""} technique${activePage.hiddenSourceCount > 1 ? "s" : ""} masquée${activePage.hiddenSourceCount > 1 ? "s" : ""}`
-      : "";
-    setStatus(`${count} vidéo${count > 1 ? "s" : ""} détectée${count > 1 ? "s" : ""}${filteredNote}${drmNote}.`, activePage.drmDetected ? "warning" : "normal");
+    const drmNote = activePage.drmDetected ? t("drmIgnored") : "";
+    const notes = [];
+    if (activePage.hiddenSourceCount) notes.push(t(activePage.hiddenSourceCount > 1 ? "hiddenVariantMany" : "hiddenVariantOne", { count: activePage.hiddenSourceCount }));
+    if (drmNote) notes.push(drmNote);
+    const extras = notes.length ? ` · ${notes.join(" · ")}` : "";
+    setStatus(t(count > 1 ? "detectedMany" : "detectedOne", { count, extras }), activePage.drmDetected ? "warning" : "normal");
     activePage.videos.forEach((video, index) => videos.append(createVideoCard(video, index)));
   } catch (error) {
-    setStatus(error.message || "Impossible d’analyser cette page.", "error");
+    setStatus(error.message || t("scanFailed"), "error");
   } finally {
     rescan.disabled = false;
   }
@@ -862,10 +993,24 @@ completionSound.addEventListener("change", async () => {
   await saveSettings();
 });
 
+language.addEventListener("change", async () => {
+  settings.language = language.value;
+  if (settings.destination !== "custom") {
+    const labels = { downloads: "downloads", movies: "movies", desktop: "desktop" };
+    settings.destinationLabel = labels[settings.destination]
+      ? t(labels[settings.destination])
+      : "Premiere Pro";
+  }
+  applyLanguage();
+  setSettingsOpen(true);
+  await saveSettings();
+  await scan();
+});
+
 destination.addEventListener("change", async () => {
   if (destination.value === "choose") {
     destination.disabled = true;
-    chrome.runtime.sendMessage({ type: "choose_folder" }, async (response) => {
+    chrome.runtime.sendMessage({ type: "choose_folder", language: activeLanguage() }, async (response) => {
       destination.disabled = false;
       if (chrome.runtime.lastError || !response?.ok) {
         destination.value = settings.destination;
@@ -874,7 +1019,7 @@ destination.addEventListener("change", async () => {
       }
       settings.destination = "custom";
       settings.destinationPath = response.path;
-      settings.destinationLabel = response.label || "Dossier choisi";
+      settings.destinationLabel = response.label || t("chosenFolder");
       let custom = destination.querySelector('option[value="custom"]');
       if (!custom) {
         custom = document.createElement("option");
