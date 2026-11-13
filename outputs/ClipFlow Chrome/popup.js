@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.13.0";
+const EXPECTED_EXTENSION_VERSION = "2.13.1";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
@@ -124,6 +124,12 @@ function activeLanguage() {
 function t(key, values = {}) {
   const text = UI_TEXT[activeLanguage()]?.[key] || UI_TEXT.fr[key] || key;
   return Object.entries(values).reduce((result, [name, value]) => result.replaceAll(`{${name}}`, String(value)), text);
+}
+
+function cleanMediaTitle(value) {
+  return String(value || "")
+    .replace(/^\s*[\[(]\d+[\])]\s*/, "")
+    .trim();
 }
 
 function applyLanguage() {
@@ -1181,11 +1187,12 @@ async function scan() {
     });
     const allCandidates = Array.from(merged.values())
       .sort((left, right) => (right.priority || 0) - (left.priority || 0) || left.label.localeCompare(right.label));
+    const mediaTitle = cleanMediaTitle(tab.title || mainResult.pageTitle);
     const recentTf1Error = tf1Status?.state === "error"
       && Date.now() - Number(tf1Status.updatedAt || 0) < 30 * 1000
       && !allCandidates.some((video) => video.source === "tf1-hls");
     if (recentTf1Error) {
-      pageTitle.textContent = tab.title || mainResult.pageTitle;
+      pageTitle.textContent = mediaTitle;
       setStatus(tf1Status.message || t("hlsUnavailable"), "error");
       return;
     }
@@ -1193,16 +1200,16 @@ async function scan() {
     const multipleVideos = filtered.videos.length > 1;
     const selectedVideos = filtered.videos.map((video, index) => ({
       ...video,
-      label: multipleVideos
+      label: cleanMediaTitle(multipleVideos
         ? (video.label || `${t("video")} ${index + 1}`)
-        : (tab.title || mainResult.pageTitle || video.label),
+        : (mediaTitle || video.label)),
       detail: `${video.kind === "VIDÉO" ? t("kindVideo") : video.kind} · ${t("bestSource")}`,
     }));
     await enrichWeakThumbnails(tab, selectedVideos);
     activePage = {
       tabId: tab.id,
       pageUrl: tab.url,
-      pageTitle: tab.title || mainResult.pageTitle,
+      pageTitle: mediaTitle,
       drmDetected: drmDetected || selectedVideos.some((video) => video.drmProtected),
       durationSeconds,
       videos: selectedVideos.slice(0, 12),

@@ -2,6 +2,10 @@
 
 All notable user-facing changes are documented here.
 
+## 2.13.1 — 2026-11-13
+
+- Removed browser notification counters such as `(168)` or `[168]` from displayed media titles and finished filenames.
+
 ## 2.13.0 — 2026-11-13
 
 - Turned settings into a dedicated view that temporarily replaces video results and file options until the gear is clicked again.
