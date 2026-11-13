@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest a workflow improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Editorial or post-production problem
+      description: Describe the workflow problem before proposing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Project scope
+      options:
+        - label: This request does not require bypassing DRM, paywalls or access controls.
+          required: true

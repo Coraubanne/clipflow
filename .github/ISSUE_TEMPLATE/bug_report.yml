@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a reproducible ClipFlow problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include cookies, private URLs, account data, logs containing tokens or copyrighted media files.
+  - type: input
+    id: version
+    attributes:
+      label: ClipFlow version
+      placeholder: v67 / app 1.48
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: macOS and browser versions
+      placeholder: macOS 15.x, Chrome 130
+    validations:
+      required: true
+  - type: input
+    id: page
+    attributes:
+      label: Public page URL
+      description: Leave empty if the page is private or requires an account.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual result
+    validations:
+      required: true
+  - type: checkboxes
+    id: authorization
+    attributes:
+      label: Responsible-use confirmation
+      options:
+        - label: I am authorized to access and download the media involved, and this report does not request DRM circumvention.
+          required: true

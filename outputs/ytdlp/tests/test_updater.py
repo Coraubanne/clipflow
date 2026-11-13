@@ -14,13 +14,14 @@ from updater import (
     parse_release_number,
     safe_extract,
     verify_checksum,
+    _request,
 )
 
 
 class UpdaterTests(unittest.TestCase):
     def test_release_tags_are_strict(self):
-        self.assertEqual(parse_release_number("v66"), 66)
-        for value in ("66", "v0", "v66-beta", "../v66"):
+        self.assertEqual(parse_release_number("v67"), 67)
+        for value in ("67", "v0", "v67-beta", "../v67"):
             with self.assertRaises(UpdateError):
                 parse_release_number(value)
 
@@ -32,6 +33,10 @@ class UpdaterTests(unittest.TestCase):
             config.write_text("github.com:\n  oauth_token: secret-token\n", encoding="utf-8")
             with patch.dict(os.environ, {}, clear=True):
                 self.assertEqual(github_token(home), "secret-token")
+
+    def test_public_release_requests_do_not_require_authentication(self):
+        request = _request("https://api.github.com/repos/Coraubanne/clipflow/releases/latest", "", "application/json")
+        self.assertIsNone(request.get_header("Authorization"))
 
     def test_checksum_must_match(self):
         with tempfile.TemporaryDirectory() as directory:

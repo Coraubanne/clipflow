@@ -1,6 +1,6 @@
 # Publication de ClipFlow sur GitHub
 
-Le dépôt GitHub doit rester **privé** tant que ClipFlow n'est pas signé, documenté pour un public externe et débarrassé de toute dépendance locale éventuelle.
+Le dépôt GitHub est public. Toute release doit rester reproductible, documentée et exempte de donnée locale ou de secret.
 
 ## À chaque nouvelle version
 

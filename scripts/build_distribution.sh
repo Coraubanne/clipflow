@@ -13,7 +13,9 @@ fi
 
 app="outputs/ytdlp/dist/ClipFlow.app"
 for required in "${app}" "outputs/ClipFlow Chrome" "outputs/ClipFlow Premiere" \
-  "outputs/ClipFlow Premiere.ccx" "outputs/LISEZ-MOI.md" "PROJECT_VERSION.json"; do
+  "outputs/ClipFlow Premiere.ccx" "outputs/LISEZ-MOI.md" "PROJECT_VERSION.json" \
+  "LICENSE" "LEGAL.md" "LEGAL.fr.md" "PRIVACY.md" "THIRD_PARTY_NOTICES.md" \
+  "LICENSES/GPL-2.0-or-later.txt"; do
   if [[ ! -e "${required}" ]]; then
     print -u2 "Composant introuvable : ${required}"
     exit 1
@@ -33,6 +35,13 @@ mkdir -p "${bundle}"
 /usr/bin/ditto "outputs/ClipFlow Premiere.ccx" "${bundle}/ClipFlow Premiere.ccx"
 /usr/bin/ditto "outputs/LISEZ-MOI.md" "${bundle}/LISEZ-MOI.md"
 /usr/bin/ditto "PROJECT_VERSION.json" "${bundle}/PROJECT_VERSION.json"
+/usr/bin/ditto "LICENSE" "${bundle}/LICENSE"
+/usr/bin/ditto "LEGAL.md" "${bundle}/LEGAL.md"
+/usr/bin/ditto "LEGAL.fr.md" "${bundle}/LEGAL.fr.md"
+/usr/bin/ditto "PRIVACY.md" "${bundle}/PRIVACY.md"
+/usr/bin/ditto "THIRD_PARTY_NOTICES.md" "${bundle}/THIRD_PARTY_NOTICES.md"
+mkdir -p "${bundle}/LICENSES"
+/usr/bin/ditto "LICENSES/GPL-2.0-or-later.txt" "${bundle}/LICENSES/GPL-2.0-or-later.txt"
 
 archive="outputs/ClipFlow-complet-v${release_number}.zip"
 rm -f "${archive}" "${archive}.sha256"

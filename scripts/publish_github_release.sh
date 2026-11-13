@@ -26,6 +26,7 @@ fi
 tag="${1:-v${release_number}}"
 archive="outputs/ClipFlow-complet-v${release_number}.zip"
 checksum="${archive}.sha256"
+release_notes="docs/releases/v${release_number}.md"
 
 if [[ ! -f "${archive}" ]]; then
   print -u2 "Archive introuvable : ${archive}"
@@ -51,9 +52,15 @@ git push origin "${tag}"
 if "${gh_bin}" release view "${tag}" >/dev/null 2>&1; then
   "${gh_bin}" release upload "${tag}" "${archive}" "${checksum}" --clobber
 else
-  "${gh_bin}" release create "${tag}" "${archive}" "${checksum}" \
-    --title "ClipFlow ${tag}" \
-    --notes "Version complète de ClipFlow. Le ZIP contient l’application macOS, l’extension Chrome et le module Premiere Pro."
+  if [[ -f "${release_notes}" ]]; then
+    "${gh_bin}" release create "${tag}" "${archive}" "${checksum}" \
+      --title "ClipFlow ${tag}" \
+      --notes-file "${release_notes}"
+  else
+    "${gh_bin}" release create "${tag}" "${archive}" "${checksum}" \
+      --title "ClipFlow ${tag}" \
+      --notes "Version complète de ClipFlow. Le ZIP contient l’application macOS, l’extension Chrome et le module Premiere Pro."
+  fi
 fi
 
 # gh creates a temporary draft while uploading large assets. If its final

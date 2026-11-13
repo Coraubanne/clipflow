@@ -25,7 +25,7 @@ import certifi
 
 GITHUB_OWNER = "Coraubanne"
 GITHUB_REPOSITORY = "clipflow"
-CURRENT_RELEASE = 66
+CURRENT_RELEASE = 67
 EXTENSION_ID = "emfjpphkcgnjldilcnieaoppmfpfkhfg"
 PREMIERE_PLUGIN_ID = "fr.clipflow.premiere.bridge"
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
@@ -106,8 +106,8 @@ def _github_json(url: str, token: str) -> object:
     except urllib.error.HTTPError as error:
         if error.code in {401, 403, 404}:
             raise UpdateError(
-                "ClipFlow n’arrive pas à accéder au dépôt GitHub privé. "
-                "Reconnectez GitHub sur ce Mac puis réessayez."
+                "ClipFlow n’arrive pas à accéder à la release GitHub publique. "
+                "Réessayez plus tard ou vérifiez l’état de GitHub."
             ) from None
         raise UpdateError(f"GitHub a refusé la vérification (erreur {error.code}).") from None
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
@@ -355,8 +355,6 @@ def install_release(
         return {"ok": True, "installed": False, "release": CURRENT_RELEASE}
     user_home = (home or Path.home()).resolve()
     token = github_token(user_home)
-    if not token:
-        raise UpdateError("Reconnectez GitHub sur ce Mac avant d’installer la mise à jour.")
     published = latest_release(user_home)
     if (
         published.get("latestRelease") != number

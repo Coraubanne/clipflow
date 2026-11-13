@@ -4,8 +4,8 @@ Cette sauvegarde permet de réinstaller la version actuelle ou de reprendre le d
 
 ## Versions sauvegardées
 
-- Application macOS : ClipFlow 1.46 (build 47), Apple Silicon ARM64
-- Extension Chrome : ClipFlow 2.8.8, Manifest V3
+- Application macOS : ClipFlow 1.48 (build 49), Apple Silicon ARM64
+- Extension Chrome : ClipFlow 2.8.9, Manifest V3
 - Module Premiere Pro : ClipFlow Premiere 1.0.4
 - Moteur : yt-dlp 2026.10.21
 - Environnement de référence : Python 3.13.0 et macOS 26.6.2
@@ -16,7 +16,7 @@ Cette sauvegarde permet de réinstaller la version actuelle ou de reprendre le d
 - `outputs/ClipFlow Chrome` : extension Chrome complète.
 - `outputs/ClipFlow Premiere` : module UXP pour Premiere Pro.
 - `.git` : dépôt Git local avec tout l’historique utile, afin de reprendre le suivi des modifications immédiatement.
-- `distribution/ClipFlow-complet-v65.zip` : version prête à réinstaller sans reconstruire le projet.
+- `distribution/ClipFlow-complet-v67.zip` : version prête à réinstaller sans reconstruire le projet.
 - `RECUPERATION_CLIPFLOW.md`, `GITHUB.md` et `PROJECT_VERSION.json` : notices et état de la sauvegarde.
 
 Les environnements virtuels, caches Python et fichiers temporaires de compilation sont volontairement exclus. Ils sont volumineux, spécifiques à l’ordinateur et peuvent être recréés à partir des fichiers de dépendances.
@@ -25,7 +25,7 @@ La sauvegarde ne contient ni vidéos téléchargées, ni cookies Chrome, ni hist
 
 ## Réinstallation rapide
 
-1. Décompresser `distribution/ClipFlow-complet-v65.zip`.
+1. Décompresser `distribution/ClipFlow-complet-v67.zip`.
 2. Copier `ClipFlow.app` dans `/Applications`.
 3. Faire un clic droit sur l’application, choisir **Ouvrir**, puis confirmer si macOS le demande. ClipFlow reste invisible lorsqu’il fonctionne.
 4. Conserver le dossier `ClipFlow Chrome` dans un emplacement permanent.
@@ -47,7 +47,7 @@ L’application reconstruite se trouvera dans `outputs/ytdlp/dist/ClipFlow.app`.
 
 Pour tester une nouvelle version de l’extension, rechargez `outputs/ClipFlow Chrome` depuis `chrome://extensions`. Conservez la clé publique du manifeste : elle maintient l’identifiant Chrome attendu par le pont natif.
 
-Pour publier une nouvelle version sur GitHub, suivez `GITHUB.md`. Le dépôt est prévu pour rester privé et chaque Release reçoit le ZIP complet correspondant.
+Pour publier une nouvelle version sur GitHub, suivez `GITHUB.md`. Le dépôt public reçoit pour chaque release le ZIP complet et son empreinte SHA-256.
 
 ## Conseil de conservation
 
