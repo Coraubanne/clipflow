@@ -17,6 +17,7 @@ Cette sauvegarde permet de réinstaller la version actuelle ou de reprendre le d
 - `outputs/ClipFlow Chrome` : extension Chrome complète.
 - `outputs/ClipFlow Premiere` : module UXP pour Premiere Pro.
 - `.git` : dépôt Git local avec tout l’historique utile, afin de reprendre le suivi des modifications immédiatement.
+- `outputs/ClipFlow-Installer.dmg` : installateur macOS unique destiné aux utilisateurs.
 - `outputs/ClipFlow-complet-v2.13.1.zip` : version prête à partager ou réinstaller sans reconstruire le projet.
 - `RECUPERATION_CLIPFLOW.md`, `GITHUB.md` et `PROJECT_VERSION.json` : notices et état de la sauvegarde.
 
@@ -26,11 +27,11 @@ La sauvegarde ne contient ni vidéos téléchargées, ni cookies Chrome, ni hist
 
 ## Réinstallation rapide
 
-1. Décompresser `outputs/ClipFlow-complet-v2.13.1.zip`.
-2. Copier `ClipFlow.app` dans `/Applications`.
-3. Faire un clic droit sur l’application, choisir **Ouvrir**, puis confirmer si macOS le demande. ClipFlow reste invisible lorsqu’il fonctionne.
-4. Conserver le dossier `ClipFlow Chrome` dans un emplacement permanent.
-5. Ouvrir `chrome://extensions`, activer le mode développeur, choisir **Charger l’extension non empaquetée**, puis sélectionner ce dossier.
+1. Ouvrir `outputs/ClipFlow-Installer.dmg`.
+2. Lancer **Installer ClipFlow**. En cas d’avertissement macOS, faire un clic en maintenant la touche Contrôle, choisir **Ouvrir**, puis confirmer.
+3. Suivre l’unique étape Chrome affichée par l’installateur pour charger le dossier `ClipFlow Chrome`.
+
+Le ZIP versionné reste disponible pour la mise à jour automatique et la récupération technique, mais ce n’est plus le parcours d’installation normal.
 
 ## Reprendre le développement
 
@@ -48,8 +49,8 @@ L’application reconstruite se trouvera dans `outputs/ytdlp/dist/ClipFlow.app`.
 
 Pour tester une nouvelle version de l’extension, rechargez `outputs/ClipFlow Chrome` depuis `chrome://extensions`. Conservez la clé publique du manifeste : elle maintient l’identifiant Chrome attendu par le pont natif.
 
-Pour publier une nouvelle version sur GitHub, suivez `GITHUB.md`. Le dépôt public reçoit pour chaque release le ZIP complet et son empreinte SHA-256.
+Pour publier une nouvelle version sur GitHub, suivez `GITHUB.md`. Le dépôt public reçoit pour chaque release l’installateur DMG, puis le ZIP complet et son empreinte SHA-256 nécessaires à la mise à jour automatique.
 
 ## Conseil de conservation
 
-Gardez au moins deux copies de l’archive finale : une dans un stockage cloud et une sur un disque externe. Le ZIP est autonome ; le dossier de travail Codex d’origine n’est pas nécessaire pour le restaurer.
+Gardez au moins deux copies de l’installateur et de l’archive technique : une dans un stockage cloud et une sur un disque externe. Le ZIP est autonome ; le dossier de travail Codex d’origine n’est pas nécessaire pour le restaurer.

@@ -20,6 +20,7 @@ rsync -a \
   --exclude '.tools/' \
   --exclude 'work/' \
   --exclude 'outputs/ClipFlow-complet-*.zip' \
+  --exclude 'outputs/ClipFlow-Installer.dmg' \
   --exclude 'outputs/ytdlp/.venv/' \
   --exclude 'outputs/ytdlp/build/' \
   --exclude 'outputs/ytdlp/dist/' \
@@ -35,6 +36,9 @@ if [[ -z "${latest_distribution}" ]]; then
 fi
 
 cp -p "${latest_distribution}" "${archive_root}/distribution/"
+if [[ -f "${project_dir}/outputs/ClipFlow-Installer.dmg" ]]; then
+  cp -p "${project_dir}/outputs/ClipFlow-Installer.dmg" "${archive_root}/distribution/"
+fi
 mkdir -p "${output_path:h}"
 rm -f "${output_path}"
 ditto -c -k --sequesterRsrc --keepParent "${archive_root}" "${output_path}"

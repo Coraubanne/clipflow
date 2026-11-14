@@ -27,12 +27,15 @@ fi
 tag="${1:-${release_tag}}"
 archive="outputs/ClipFlow-complet-${release_tag}.zip"
 checksum="${archive}.sha256"
+installer="outputs/ClipFlow-Installer.dmg"
 release_notes="docs/releases/${release_tag}.md"
 
-if [[ ! -f "${archive}" ]]; then
-  print -u2 "Archive introuvable : ${archive}"
-  exit 1
-fi
+for required in "${archive}" "${installer}"; do
+  if [[ ! -f "${required}" ]]; then
+    print -u2 "Distribution introuvable : ${required}"
+    exit 1
+  fi
+done
 
 archive_name="${archive:t}"
 archive_hash="$(shasum -a 256 "${archive}" | awk '{print $1}')"
@@ -51,14 +54,19 @@ git push origin main
 git push origin "${tag}"
 
 if "${gh_bin}" release view "${tag}" >/dev/null 2>&1; then
-  "${gh_bin}" release upload "${tag}" "${archive}" "${checksum}" --clobber
+  "${gh_bin}" release upload "${tag}" "${installer}" "${archive}" "${checksum}" --clobber
+  if [[ -f "${release_notes}" ]]; then
+    "${gh_bin}" release edit "${tag}" \
+      --title "ClipFlow ${product_version}" \
+      --notes-file "${release_notes}"
+  fi
 else
   if [[ -f "${release_notes}" ]]; then
-    "${gh_bin}" release create "${tag}" "${archive}" "${checksum}" \
+    "${gh_bin}" release create "${tag}" "${installer}" "${archive}" "${checksum}" \
       --title "ClipFlow ${product_version}" \
       --notes-file "${release_notes}"
   else
-    "${gh_bin}" release create "${tag}" "${archive}" "${checksum}" \
+    "${gh_bin}" release create "${tag}" "${installer}" "${archive}" "${checksum}" \
       --title "ClipFlow ${product_version}" \
       --notes "Version complète de ClipFlow. Le ZIP contient l’application macOS, l’extension Chrome et le module Premiere Pro."
   fi
@@ -74,4 +82,4 @@ if [[ "$("${gh_bin}" release view "${tag}" --json isDraft --jq '.isDraft')" == "
     --title "ClipFlow ${product_version}"
 fi
 
-print "Version ${tag} publiée avec ${archive} et son empreinte SHA-256."
+print "Version ${tag} publiée avec l’installateur macOS, l’archive de mise à jour et son empreinte SHA-256."

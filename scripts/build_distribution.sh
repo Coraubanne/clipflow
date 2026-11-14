@@ -49,4 +49,5 @@ rm -f "${archive}" "${archive}.sha256"
 unzip -tq "${archive}"
 hash="$(shasum -a 256 "${archive}" | awk '{print $1}')"
 print "${hash}  ${archive:t}" > "${archive}.sha256"
+zsh scripts/build_installer_dmg.sh
 print "Distribution créée : ${archive}"

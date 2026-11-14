@@ -11,15 +11,15 @@ Le dépôt GitHub est public. Toute release doit rester reproductible, document�
    (cd outputs/ytdlp && .venv/bin/python -m unittest discover -s tests -v)
    ```
 
-3. Reconstruire l’application puis créer l’archive et son empreinte avec `scripts/build_distribution.sh`.
+3. Reconstruire l’application puis créer l’installateur macOS, l’archive de mise à jour et son empreinte avec `scripts/build_distribution.sh`.
 4. Enregistrer les changements dans Git avec un message clair.
-5. Publier la version et son ZIP :
+5. Publier la version et ses fichiers de distribution :
 
    ```sh
    scripts/publish_github_release.sh
    ```
 
-Le script pousse la branche `main`, utilise le champ `release_tag` de `PROJECT_VERSION.json` et ajoute le ZIP ainsi que son fichier `.sha256` à une Release GitHub nommée avec la version produit. Après le tag de transition `v69` associé à ClipFlow 2.9.1, les tags suivent le format sémantique `vMAJEUR.MINEUR.CORRECTIF`. L’empreinte est obligatoire pour que l’installateur automatique accepte la release. Le script refuse de publier un dossier qui contient des modifications non enregistrées.
+Le script pousse la branche `main`, utilise le champ `release_tag` de `PROJECT_VERSION.json` et ajoute trois éléments à la Release GitHub : `ClipFlow-Installer.dmg` pour les utilisateurs, puis le ZIP versionné et son fichier `.sha256` pour le système de mise à jour automatique. Après le tag de transition `v69` associé à ClipFlow 2.9.1, les tags suivent le format sémantique `vMAJEUR.MINEUR.CORRECTIF`. L’empreinte est obligatoire pour que le système de mise à jour accepte la release. Le script refuse de publier un dossier qui contient des modifications non enregistrées.
 
 ## Sauvegarde hors GitHub
 

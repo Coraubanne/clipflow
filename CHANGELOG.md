@@ -5,6 +5,7 @@ All notable user-facing changes are documented here.
 ## 2.13.1 — 2026-11-13
 
 - Removed browser notification counters such as `(168)` or `[168]` from displayed media titles and finished filenames.
+- Added a single-file macOS installer image and a prominent user download button, while retaining the technical source archive and updater assets separately.
 
 ## 2.13.0 — 2026-11-13
 

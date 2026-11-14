@@ -20,6 +20,12 @@
   <a href="README.md">English</a> · <strong>Français</strong>
 </p>
 
+<p align="center">
+  <a href="https://github.com/Coraubanne/clipflow/releases/latest/download/ClipFlow-Installer.dmg"><img alt="Télécharger ClipFlow pour macOS" src="https://img.shields.io/badge/Telecharger_ClipFlow_pour_macOS-007AFF?style=for-the-badge&logo=apple&logoColor=white"></a>
+</p>
+
+> **Pour les utilisateurs :** téléchargez `ClipFlow-Installer.dmg` avec le bouton ci-dessus. N’utilisez pas **Code → Download ZIP** sur GitHub : cette commande récupère le code source et tous les fichiers de développement du projet.
+
 ClipFlow transforme la collecte de vidéos web en un flux de postproduction propre. Son extension Chrome identifie les médias compatibles dans l’onglet actif, son moteur macOS local récupère la meilleure source compatible avec [yt-dlp](https://github.com/yt-dlp/yt-dlp), et son panneau Premiere Pro optionnel peut enregistrer le fichier à côté du projet actif puis l’importer automatiquement.
 
 Le projet est pensé pour les monteurs, documentalistes audiovisuels, recherchistes, journalistes, producteurs d’archives et équipes de postproduction qui doivent collecter rapidement des médias qu’ils sont autorisés à utiliser.
@@ -46,18 +52,18 @@ Le projet est pensé pour les monteurs, documentalistes audiovisuels, recherchis
 | --- | --- | --- |
 | Détection | Extension Chrome | Analyse uniquement l’onglet actif lorsque l’utilisateur ouvre ClipFlow. |
 | Récupération | App macOS en arrière-plan | Utilise yt-dlp et FFmpeg pour télécharger, assembler ou convertir les médias compatibles. |
-| Classement | Système de fichiers local | Écrit le résultat dans Téléchargements, Films, Bureau, un dossier choisi ou le dossier du projet Premiere. |
+| Classement | Système de fichiers local | Écrit le résultat dans Téléchargements, un dossier choisi ou le dossier du projet Premiere. |
 | Montage | Panneau Premiere Pro | Peut importer le fichier terminé dans le projet actif. |
 
 ## Installation
 
 ClipFlow cible actuellement les Mac Apple Silicon et est distribué hors du Mac App Store et du Chrome Web Store.
 
-1. Téléchargez le dernier `ClipFlow-complet-v*.zip` depuis les [Releases GitHub](https://github.com/Coraubanne/clipflow/releases/latest).
-2. Déplacez `ClipFlow.app` dans `/Applications`. Au premier lancement, faites un clic avec la touche Contrôle sur l’app, choisissez **Ouvrir**, puis confirmez le message de macOS.
-3. Conservez le dossier `ClipFlow Chrome` dans un emplacement permanent. Ouvrez `chrome://extensions`, activez le **Mode développeur**, choisissez **Charger l’extension non empaquetée**, puis sélectionnez ce dossier.
+1. Téléchargez l’unique fichier [`ClipFlow-Installer.dmg`](https://github.com/Coraubanne/clipflow/releases/latest/download/ClipFlow-Installer.dmg).
+2. Ouvrez l’image disque puis lancez **Installer ClipFlow**. Il installe l’app macOS, place l’extension Chrome dans `Documents/ClipFlow` et installe le module Premiere Pro.
+   Si macOS bloque ce premier lancement, faites un clic en maintenant la touche Contrôle sur **Installer ClipFlow**, choisissez **Ouvrir**, puis confirmez. Une future version notariée supprimera cette étape supplémentaire.
+3. Lorsque le message apparaît, ouvrez `chrome://extensions`, activez le **Mode développeur**, choisissez **Charger l’extension non empaquetée**, puis sélectionnez le dossier `ClipFlow Chrome` affiché par le Finder. Chrome interdit à une extension publique non empaquetée de s’activer silencieusement.
 4. Épinglez ClipFlow à la barre d’outils. Ouvrez une page vidéo, lancez la lecture si nécessaire, ouvrez ClipFlow puis choisissez **Télécharger**.
-5. Facultatif : installez `ClipFlow Premiere.ccx`, puis gardez **Fenêtre → Plug-ins UXP → ClipFlow** ouvert lorsque vous utilisez la destination Premiere.
 
 Après la première installation, utilisez **Réglages → Chercher une mise à jour**. Les releases publiques peuvent être vérifiées et installées sans compte GitHub.
 
