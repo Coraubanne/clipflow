@@ -683,7 +683,7 @@ def direct_stream_output_template(
     referer: str | None,
     title_hint: str | None,
 ) -> str | None:
-    """Name generic manifests after their website and human page title."""
+    """Name generic direct media after its website and human page title."""
     try:
         parsed = urlparse(url)
     except ValueError:
@@ -691,7 +691,7 @@ def direct_stream_output_template(
     hostname = (parsed.hostname or "").casefold()
     path = parsed.path.casefold()
     direct_stream = (
-        path.endswith((".m3u8", ".mpd"))
+        path.endswith((".m3u8", ".mpd", ".mp4", ".m4v", ".mov", ".webm", ".ogv"))
         or "vimeocdn.com" in hostname
         or ".ism/" in path
     )

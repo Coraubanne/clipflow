@@ -2,6 +2,11 @@
 
 All notable user-facing changes are documented here.
 
+## 2.13.2 — 2026-11-16
+
+- Fixed direct MP4 naming on sites such as Hostinger: finished files now use the originating website and human page title instead of an opaque CDN hostname and identifier.
+- Confirmed Hostinger's embedded Cloudflare Stream MP4 remains an original H.264 source with no slow video conversion.
+
 ## 2.13.1 — 2026-11-13
 
 - Removed browser notification counters such as `(168)` or `[168]` from displayed media titles and finished filenames.

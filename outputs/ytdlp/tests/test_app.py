@@ -152,6 +152,26 @@ class TubeSaveTests(unittest.TestCase):
         self.assertNotIn("--merge-output-format", command)
         self.assertEqual(command[-1], "https://scrollprize.org/img/tutorials/pi-symbol3.webm?cache=1")
 
+    def test_direct_mp4_uses_page_title_instead_of_cdn_identifier(self):
+        command = build_download_command(
+            ["python", "-m", "yt_dlp"],
+            "https://customer.example-cdn.com/f87e97/downloads/default.mp4",
+            Path("/tmp"),
+            PROFILES[0],
+            Path("/tmp/ffmpeg"),
+            None,
+            referer="https://www.hostinger.com/fr/vps",
+            title_hint="Hébergement VPS | VPS KVM rapide",
+        )
+
+        output = command[command.index("--output") + 1]
+        self.assertRegex(
+            output,
+            r"^hostinger\.com — Hébergement VPS \| VPS KVM rapide \[source-[0-9a-f]{8}\]\.%\(ext\)s$",
+        )
+        self.assertNotIn("customer.example-cdn.com", output)
+        self.assertNotIn("f87e97", output)
+
     def test_default_prioritizes_max_h264_resolution_and_original_audio(self):
         command = build_download_command(
             ["python", "-m", "yt_dlp"],
