@@ -1,4 +1,5 @@
 import json
+import os
 import queue
 import subprocess
 import tempfile
@@ -9,6 +10,7 @@ from unittest.mock import patch
 from app import (
     PROFILES,
     DownloadWorker,
+    acquire_agent_lock,
     already_downloaded_path,
     automatic_browser_session_enabled,
     authentication_required_output,
@@ -26,6 +28,7 @@ from app import (
     last_used_browser_profile,
     quality_format_unavailable_output,
     queue_premiere_import,
+    recover_orphaned_extension_statuses,
     wait_for_premiere_import,
     play_completion_sound,
     resume_legacy_partials,
@@ -37,6 +40,20 @@ from app import (
 
 
 class TubeSaveTests(unittest.TestCase):
+    def test_only_one_background_agent_can_hold_the_runtime_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            first = acquire_agent_lock(home)
+            self.assertIsNotNone(first)
+            self.assertIsNone(acquire_agent_lock(home))
+            lock_path = home / "Library/Application Support/TubeSave/clipflow-agent.lock"
+            self.assertEqual(lock_path.read_text(encoding="utf-8").strip(), str(os.getpid()))
+            self.assertEqual(lock_path.stat().st_mode & 0o777, 0o600)
+            first.close()
+            replacement = acquire_agent_lock(home)
+            self.assertIsNotNone(replacement)
+            replacement.close()
+
     def test_distribution_is_a_background_only_user_agent(self):
         project = Path(__file__).resolve().parents[1]
         source = (project / "app.py").read_text(encoding="utf-8")
@@ -79,6 +96,28 @@ class TubeSaveTests(unittest.TestCase):
         self.assertEqual(payload["state"], "running")
         self.assertEqual(payload["progress"], 100)
         self.assertEqual(payload["message"], "Téléchargement")
+
+    def test_orphaned_statuses_are_recovered_without_losing_pending_jobs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            inbox = home / "Library/Application Support/TubeSave/Inbox"
+            inbox.mkdir(parents=True)
+            (inbox / "pending.json").write_text("{}", encoding="utf-8")
+            write_extension_status("orphan", "running", 63, "Téléchargement", home)
+            write_extension_status("pending", "queued", 1, "En attente", home)
+            write_extension_status("finished", "complete", 100, "Terminé", home)
+
+            self.assertEqual(recover_orphaned_extension_statuses(home), 1)
+
+            status_directory = home / "Library/Application Support/TubeSave/Status"
+            orphan = json.loads((status_directory / "orphan.json").read_text(encoding="utf-8"))
+            pending = json.loads((status_directory / "pending.json").read_text(encoding="utf-8"))
+            finished = json.loads((status_directory / "finished.json").read_text(encoding="utf-8"))
+        self.assertEqual(orphan["state"], "error")
+        self.assertEqual(orphan["progress"], 63)
+        self.assertIn("rétabli", orphan["message"])
+        self.assertEqual(pending["state"], "queued")
+        self.assertEqual(finished["state"], "complete")
 
     def test_youtube_url(self):
         self.assertTrue(is_youtube_url("https://youtu.be/abc"))

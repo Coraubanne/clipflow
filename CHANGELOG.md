@@ -2,6 +2,11 @@
 
 All notable user-facing changes are documented here.
 
+## 2.13.3 — 2026-11-19
+
+- Prevented multiple background download engines from running concurrently and corrupting otherwise valid downloads near completion.
+- Recovered unfinished extension jobs left behind by a previous crash while preserving requests that are still genuinely queued.
+
 ## 2.13.2 — 2026-11-16
 
 - Fixed direct MP4 naming on sites such as Hostinger: finished files now use the originating website and human page title instead of an opaque CDN hostname and identifier.

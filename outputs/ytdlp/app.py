@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import ipaddress
+import fcntl
 import os
 import queue
 import re
@@ -73,6 +74,7 @@ COMPLETION_SOUNDS = (
     Path("/System/Library/Sounds/Pop.aiff"),
     Path("/System/Library/Sounds/Glass.aiff"),
 )
+AGENT_LOCK_NAME = "clipflow-agent.lock"
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,24 @@ def application_resources() -> Path:
     if frozen_application():
         return Path(sys.executable).resolve().parents[1] / "Resources"
     return Path(__file__).resolve().parent
+
+
+def acquire_agent_lock(home: Path | None = None):
+    """Keep exactly one background download engine alive per user account."""
+    runtime = (home or Path.home()) / "Library/Application Support/TubeSave"
+    runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock = (runtime / AGENT_LOCK_NAME).open("a+", encoding="utf-8")
+    try:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.close()
+        return None
+    lock.seek(0)
+    lock.truncate()
+    lock.write(f"{os.getpid()}\n")
+    lock.flush()
+    os.fchmod(lock.fileno(), 0o600)
+    return lock
 
 
 def is_youtube_url(value: str) -> bool:
@@ -306,6 +326,37 @@ def write_extension_status(
         temporary.replace(target)
     except OSError:
         pass
+
+
+def recover_orphaned_extension_statuses(home: Path | None = None) -> int:
+    """Fail unfinished statuses that no longer have a queued request after a crash."""
+    inbox = extension_inbox(home)
+    status_directory = extension_status_directory(home)
+    try:
+        pending_jobs = {path.stem for path in inbox.glob("*.json")}
+        statuses = list(status_directory.glob("*.json"))
+    except OSError:
+        return 0
+
+    recovered = 0
+    for status_path in statuses:
+        if status_path.stem in pending_jobs:
+            continue
+        try:
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        if not isinstance(payload, dict) or payload.get("state") not in {"queued", "running"}:
+            continue
+        write_extension_status(
+            status_path.stem,
+            "error",
+            payload.get("progress", 0),
+            "ClipFlow s’est rétabli après une erreur interne. Relancez le téléchargement.",
+            home,
+        )
+        recovered += 1
+    return recovered
 
 
 def settings_file(home: Path | None = None) -> Path:
@@ -1701,7 +1752,15 @@ def main() -> int:
         import native_host
 
         return native_host.main()
-    TubeSaveApp().run_forever()
+    agent_lock = acquire_agent_lock()
+    if agent_lock is None:
+        return 0
+    try:
+        recover_orphaned_extension_statuses()
+        TubeSaveApp().run_forever()
+    finally:
+        fcntl.flock(agent_lock.fileno(), fcntl.LOCK_UN)
+        agent_lock.close()
     return 0
 
 
