@@ -1,0 +1,3 @@
+[submodule "vendor/CreatorBridge"]
+	path = vendor/CreatorBridge
+	url = https://github.com/Coraubanne/CreatorBridge.git

@@ -4,9 +4,9 @@ Cette sauvegarde permet de réinstaller la version actuelle ou de reprendre le d
 
 ## Versions sauvegardées
 
-- Produit : ClipFlow 2.13.3, version sémantique
-- Application macOS : ClipFlow 2.13.3 (build 61), Apple Silicon ARM64
-- Extension Chrome : ClipFlow 2.13.3, Manifest V3
+- Produit : ClipFlow 2.14.0, version sémantique
+- Application macOS : ClipFlow 2.14.0 (build 62), Apple Silicon ARM64
+- Extension Chrome : ClipFlow 2.14.0, Manifest V3
 - Module Premiere Pro : ClipFlow Premiere 1.0.4
 - Moteur : yt-dlp 2026.10.26
 - Environnement de référence : Python 3.13.0 et macOS 26.6.2
@@ -18,7 +18,7 @@ Cette sauvegarde permet de réinstaller la version actuelle ou de reprendre le d
 - `outputs/ClipFlow Premiere` : module UXP pour Premiere Pro.
 - `.git` : dépôt Git local avec tout l’historique utile, afin de reprendre le suivi des modifications immédiatement.
 - `outputs/ClipFlow-Installer.dmg` : installateur macOS unique destiné aux utilisateurs.
-- `outputs/ClipFlow-complet-v2.13.3.zip` : version prête à partager ou réinstaller sans reconstruire le projet.
+- `outputs/ClipFlow-complet-v2.14.0.zip` : version prête à partager ou réinstaller sans reconstruire le projet.
 - `RECUPERATION_CLIPFLOW.md`, `GITHUB.md` et `PROJECT_VERSION.json` : notices et état de la sauvegarde.
 
 Les environnements virtuels, caches Python et fichiers temporaires de compilation sont volontairement exclus. Ils sont volumineux, spécifiques à l’ordinateur et peuvent être recréés à partir des fichiers de dépendances.

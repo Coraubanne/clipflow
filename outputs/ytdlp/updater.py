@@ -26,7 +26,8 @@ import certifi
 GITHUB_OWNER = "Coraubanne"
 GITHUB_REPOSITORY = "clipflow"
 CURRENT_RELEASE = 75
-CURRENT_VERSION = "2.13.3"
+CURRENT_VERSION = "2.14.0"
+APP_BUNDLE_ID = "fr.clipflow.app"
 EXTENSION_ID = "emfjpphkcgnjldilcnieaoppmfpfkhfg"
 PREMIERE_PLUGIN_ID = "fr.clipflow.premiere.bridge"
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
@@ -312,7 +313,7 @@ def validate_bundle(root: Path, expected_release: int | str) -> dict[str, Path]:
 
     app = root / "ClipFlow.app"
     extension = root / "ClipFlow Chrome"
-    premiere = root / "ClipFlow Premiere"
+    premiere = root / "Creator Bridge"
     try:
         with (app / "Contents/Info.plist").open("rb") as stream:
             info = plistlib.load(stream)
@@ -364,6 +365,152 @@ def chrome_extension_paths(home: Path | None = None) -> list[Path]:
         if path.is_dir() and path not in found:
             found.append(path)
     return found
+
+
+def premiere_plugin_installations(home: Path | None = None) -> list[tuple[tuple[int, int, int], Path]]:
+    """Return only validated Creator Bridge/legacy ClipFlow bridge installations."""
+    root = (home or Path.home()).resolve() / "Library/Application Support/Adobe/UXP/Plugins/External"
+    found: list[tuple[tuple[int, int, int], Path]] = []
+    for path in root.glob(f"{PREMIERE_PLUGIN_ID}_*"):
+        try:
+            manifest = _read_json(path / "manifest.json")
+            if manifest.get("id") != PREMIERE_PLUGIN_ID:
+                continue
+            found.append((parse_semantic_version(manifest.get("version")), path))
+        except (OSError, UpdateError):
+            continue
+    return found
+
+
+def clipflow_application_installations(
+    home: Path | None = None,
+    roots: tuple[Path, ...] | None = None,
+) -> list[tuple[tuple[int, int, int], Path]]:
+    """Find real ClipFlow app bundles only in the two macOS application roots."""
+    user_home = (home or Path.home()).resolve()
+    application_roots = roots or (Path("/Applications"), user_home / "Applications")
+    found: list[tuple[tuple[int, int, int], Path]] = []
+    for root in application_roots:
+        try:
+            candidates = list(root.glob("*.app"))
+        except OSError:
+            continue
+        for path in candidates:
+            if path.is_symlink() or not path.is_dir():
+                continue
+            try:
+                with (path / "Contents/Info.plist").open("rb") as info_file:
+                    info = plistlib.load(info_file)
+                if info.get("CFBundleIdentifier") != APP_BUNDLE_ID:
+                    continue
+                version = parse_semantic_version(info.get("CFBundleShortVersionString"))
+            except (OSError, ValueError, TypeError, UpdateError, plistlib.InvalidFileException):
+                continue
+            found.append((version, path))
+    return found
+
+
+def _extension_identity(path: Path) -> tuple[int, int, int] | None:
+    try:
+        manifest = _read_json(path / "manifest.json")
+        name = manifest.get("name")
+        if name == "__MSG_extensionName__":
+            locale = str(manifest.get("default_locale") or "")
+            name = _read_json(path / "_locales" / locale / "messages.json").get(
+                "extensionName", {}
+            ).get("message")
+        if name != "ClipFlow" or not manifest.get("key"):
+            return None
+        return parse_semantic_version(manifest.get("version"))
+    except (OSError, TypeError, UpdateError):
+        return None
+
+
+def managed_extension_installations(home: Path | None = None) -> list[tuple[tuple[int, int, int], Path]]:
+    """Return known installed copies without ever scanning or touching project sources."""
+    user_home = (home or Path.home()).resolve()
+    candidates = [
+        user_home / "Documents/ClipFlow/ClipFlow Chrome",
+        user_home / "Documents/ClipFlow Chrome",
+        user_home / "Documents/TubeSave Extension",
+        user_home / "Documents/Codex/TubeSave Extension",
+    ]
+    found: list[tuple[tuple[int, int, int], Path]] = []
+    for path in candidates:
+        version = _extension_identity(path)
+        if version is not None:
+            found.append((version, path))
+    return found
+
+
+def cleanup_installed_duplicates(
+    active_app: Path,
+    home: Path | None = None,
+    app_roots: tuple[Path, ...] | None = None,
+) -> dict[str, int]:
+    """Remove only verified, obsolete ClipFlow components while keeping active copies safe."""
+    user_home = (home or Path.home()).resolve()
+    active_app = active_app.resolve()
+    removed = {"applications": 0, "extensions": 0, "premiere": 0}
+
+    applications = clipflow_application_installations(user_home, app_roots)
+    active_entry = next((item for item in applications if item[1].resolve() == active_app), None)
+    if active_entry is not None:
+        active_version = active_entry[0]
+        # Never remove another app if it is newer than the one currently running.
+        if not any(version > active_version for version, _path in applications):
+            for version, path in applications:
+                if path.resolve() == active_app or version > active_version:
+                    continue
+                try:
+                    shutil.rmtree(path)
+                    removed["applications"] += 1
+                except OSError:
+                    pass
+
+    premiere = premiere_plugin_installations(user_home)
+    if premiere:
+        newest_premiere = max(version for version, _path in premiere)
+        newest_paths = [path for version, path in premiere if version == newest_premiere]
+        keep_premiere = newest_paths[0].resolve()
+        for version, path in premiere:
+            if version > newest_premiere or path.resolve() == keep_premiere:
+                continue
+            try:
+                shutil.rmtree(path)
+                removed["premiere"] += 1
+            except OSError:
+                pass
+
+    active_extensions = {path.resolve() for path in chrome_extension_paths(user_home)}
+    managed_extensions = managed_extension_installations(user_home)
+    active_versions = [
+        version for version, path in managed_extensions if path.resolve() in active_extensions
+    ]
+    if active_versions:
+        cleanup_ceiling = max(active_versions)
+        for version, path in managed_extensions:
+            if path.resolve() in active_extensions or version > cleanup_ceiling:
+                continue
+            try:
+                shutil.rmtree(path)
+                removed["extensions"] += 1
+            except OSError:
+                pass
+    elif managed_extensions:
+        newest_extension = max(version for version, _path in managed_extensions)
+        keep_extension = next(
+            path.resolve() for version, path in managed_extensions if version == newest_extension
+        )
+        for version, path in managed_extensions:
+            if path.resolve() == keep_extension or version > newest_extension:
+                continue
+            try:
+                shutil.rmtree(path)
+                removed["extensions"] += 1
+            except OSError:
+                pass
+    return removed
 
 
 def _copy_tree(source: Path, destination: Path) -> None:
@@ -438,6 +585,11 @@ def install_release(
         ):
             raise UpdateError("L’application ClipFlow installée ne peut pas être mise à jour.")
         premiere_version = str(_read_json(components["premiere"] / "manifest.json").get("version", ""))
+        bundled_premiere_version = parse_semantic_version(premiere_version)
+        installed_premiere = premiere_plugin_installations(user_home)
+        newer_premiere_installed = any(
+            version > bundled_premiere_version for version, _path in installed_premiere
+        )
         premiere_target = (
             user_home / "Library/Application Support/Adobe/UXP/Plugins/External"
             / f"{PREMIERE_PLUGIN_ID}_{premiere_version}"
@@ -447,7 +599,8 @@ def install_release(
         try:
             for target in extension_targets:
                 replacements.append((target, _atomic_replace(components["extension"], target)))
-            replacements.append((premiere_target, _atomic_replace(components["premiere"], premiere_target)))
+            if not newer_premiere_installed:
+                replacements.append((premiere_target, _atomic_replace(components["premiere"], premiere_target)))
             # Contents can be replaced atomically even when /Applications itself
             # is not writable. The already-running native host keeps its open image.
             app_contents = app_target / "Contents"
@@ -473,6 +626,7 @@ def install_release(
             )
             if verification.returncode != 0:
                 raise UpdateError("La nouvelle application n’a pas passé la vérification finale.")
+            cleanup_installed_duplicates(app_target, user_home)
         except Exception as error:
             for target, backup in reversed(replacements):
                 try:

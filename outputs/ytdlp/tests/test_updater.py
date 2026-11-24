@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import plistlib
 import tempfile
 import unittest
 import zipfile
@@ -10,6 +11,7 @@ from unittest.mock import patch
 from updater import (
     UpdateError,
     chrome_extension_paths,
+    cleanup_installed_duplicates,
     github_token,
     latest_release,
     normalized_release_tag,
@@ -23,6 +25,101 @@ from updater import (
 
 
 class UpdaterTests(unittest.TestCase):
+    @staticmethod
+    def _write_app(path: Path, version: str, bundle_id: str = "fr.clipflow.app") -> None:
+        contents = path / "Contents"
+        contents.mkdir(parents=True)
+        with (contents / "Info.plist").open("wb") as stream:
+            plistlib.dump(
+                {
+                    "CFBundleIdentifier": bundle_id,
+                    "CFBundleShortVersionString": version,
+                },
+                stream,
+            )
+
+    @staticmethod
+    def _write_extension(path: Path, version: str) -> None:
+        path.mkdir(parents=True)
+        (path / "manifest.json").write_text(
+            json.dumps({"name": "ClipFlow", "version": version, "key": "public-key"}),
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def _write_premiere(path: Path, version: str) -> None:
+        path.mkdir(parents=True)
+        (path / "manifest.json").write_text(
+            json.dumps({"id": "fr.clipflow.premiere.bridge", "version": version}),
+            encoding="utf-8",
+        )
+
+    def test_duplicate_cleanup_keeps_only_verified_latest_components(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            applications = home / "Applications"
+            active_app = applications / "ClipFlow.app"
+            old_app = applications / "ClipFlow old.app"
+            unrelated_app = applications / "ClipFlow notes.app"
+            self._write_app(active_app, "2.13.3")
+            self._write_app(old_app, "2.12.0")
+            self._write_app(unrelated_app, "1.0.0", "com.example.unrelated")
+
+            premiere_root = home / "Library/Application Support/Adobe/UXP/Plugins/External"
+            old_premiere = premiere_root / "fr.clipflow.premiere.bridge_1.0.4"
+            latest_premiere = premiere_root / "fr.clipflow.premiere.bridge_1.1.0"
+            self._write_premiere(old_premiere, "1.0.4")
+            self._write_premiere(latest_premiere, "1.1.0")
+
+            active_extension = home / "Documents/Codex/TubeSave Extension"
+            old_extension = home / "Documents/ClipFlow/ClipFlow Chrome"
+            self._write_extension(active_extension, "2.13.3")
+            self._write_extension(old_extension, "2.12.0")
+            preferences = home / "Library/Application Support/Google/Chrome/Default/Secure Preferences"
+            preferences.parent.mkdir(parents=True)
+            preferences.write_text(
+                json.dumps({
+                    "extensions": {"settings": {
+                        "emfjpphkcgnjldilcnieaoppmfpfkhfg": {"path": str(active_extension)}
+                    }}
+                }),
+                encoding="utf-8",
+            )
+
+            removed = cleanup_installed_duplicates(
+                active_app,
+                home,
+                app_roots=(applications,),
+            )
+
+            self.assertEqual(removed, {"applications": 1, "extensions": 1, "premiere": 1})
+            self.assertTrue(active_app.is_dir())
+            self.assertFalse(old_app.exists())
+            self.assertTrue(unrelated_app.is_dir())
+            self.assertTrue(latest_premiere.is_dir())
+            self.assertFalse(old_premiere.exists())
+            self.assertTrue(active_extension.is_dir())
+            self.assertFalse(old_extension.exists())
+
+    def test_duplicate_cleanup_never_removes_an_app_newer_than_the_active_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            applications = home / "Applications"
+            active_app = applications / "ClipFlow.app"
+            newer_app = applications / "ClipFlow future.app"
+            self._write_app(active_app, "2.13.3")
+            self._write_app(newer_app, "2.14.0")
+
+            removed = cleanup_installed_duplicates(
+                active_app,
+                home,
+                app_roots=(applications,),
+            )
+
+            self.assertEqual(removed["applications"], 0)
+            self.assertTrue(active_app.is_dir())
+            self.assertTrue(newer_app.is_dir())
+
     def test_release_tags_are_strict(self):
         self.assertEqual(parse_release_number("v67"), 67)
         for value in ("67", "v0", "v67-beta", "../v67"):
@@ -31,9 +128,9 @@ class UpdaterTests(unittest.TestCase):
 
     def test_semantic_versions_are_strict_and_ordered(self):
         self.assertEqual(parse_semantic_version("2.9.1"), (2, 9, 1))
-        self.assertEqual(normalized_release_tag("v2.13.3"), "v2.13.3")
-        self.assertFalse(release_is_newer("v2.13.3"))
-        self.assertTrue(release_is_newer("v2.13.4"))
+        self.assertEqual(normalized_release_tag("v2.14.0"), "v2.14.0")
+        self.assertFalse(release_is_newer("v2.14.0"))
+        self.assertTrue(release_is_newer("v2.14.1"))
         self.assertTrue(release_is_newer("v3.0.0"))
         for value in ("2.9", "v2.09.1", "v2.9.1-beta", "../v2.9.2"):
             with self.assertRaises(UpdateError):
@@ -41,20 +138,20 @@ class UpdaterTests(unittest.TestCase):
 
     def test_latest_release_accepts_future_semantic_tag(self):
         payload = {
-            "tag_name": "v2.13.4",
-            "name": "ClipFlow 2.13.4",
+            "tag_name": "v2.14.1",
+            "name": "ClipFlow 2.14.1",
             "draft": False,
             "prerelease": False,
             "assets": [
-                {"id": 101, "name": "ClipFlow-complet-v2.13.4.zip"},
-                {"id": 102, "name": "ClipFlow-complet-v2.13.4.zip.sha256"},
+                {"id": 101, "name": "ClipFlow-complet-v2.14.1.zip"},
+                {"id": 102, "name": "ClipFlow-complet-v2.14.1.zip.sha256"},
             ],
         }
         with patch("updater._github_json", return_value=payload):
             result = latest_release(Path("/nonexistent"))
         self.assertTrue(result["available"])
-        self.assertEqual(result["releaseTag"], "v2.13.4")
-        self.assertEqual(result["latestVersion"], "2.13.4")
+        self.assertEqual(result["releaseTag"], "v2.14.1")
+        self.assertEqual(result["latestVersion"], "2.14.1")
         self.assertEqual(result["archiveAssetId"], 101)
 
     def test_github_token_is_read_without_exposing_configuration(self):

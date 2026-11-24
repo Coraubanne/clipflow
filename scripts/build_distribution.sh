@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="${0:A:h}"
 project_dir="${script_dir:h}"
 cd "${project_dir}"
+creator_bridge="${CREATOR_BRIDGE_DIR:-${project_dir}/vendor/CreatorBridge}"
 
 release_tag="$(sed -n 's/.*"release_tag"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' PROJECT_VERSION.json | head -n 1)"
 if [[ -z "${release_tag}" ]]; then
@@ -12,8 +13,8 @@ if [[ -z "${release_tag}" ]]; then
 fi
 
 app="outputs/ytdlp/dist/ClipFlow.app"
-for required in "${app}" "outputs/ClipFlow Chrome" "outputs/ClipFlow Premiere" \
-  "outputs/ClipFlow Premiere.ccx" "outputs/LISEZ-MOI.md" "PROJECT_VERSION.json" \
+for required in "${app}" "outputs/ClipFlow Chrome" "${creator_bridge}" \
+  "outputs/LISEZ-MOI.md" "PROJECT_VERSION.json" \
   "LICENSE" "LEGAL.md" "LEGAL.fr.md" "PRIVACY.md" "THIRD_PARTY_NOTICES.md" \
   "LICENSES/GPL-2.0-or-later.txt"; do
   if [[ ! -e "${required}" ]]; then
@@ -31,8 +32,8 @@ mkdir -p "${bundle}"
 
 /usr/bin/ditto "${app}" "${bundle}/ClipFlow.app"
 /usr/bin/ditto "outputs/ClipFlow Chrome" "${bundle}/ClipFlow Chrome"
-/usr/bin/ditto "outputs/ClipFlow Premiere" "${bundle}/ClipFlow Premiere"
-/usr/bin/ditto "outputs/ClipFlow Premiere.ccx" "${bundle}/ClipFlow Premiere.ccx"
+/usr/bin/ditto "${creator_bridge}" "${bundle}/Creator Bridge"
+/bin/rm -rf "${bundle}/Creator Bridge/.git" "${bundle}/Creator Bridge/.gitignore"
 /usr/bin/ditto "outputs/LISEZ-MOI.md" "${bundle}/LISEZ-MOI.md"
 /usr/bin/ditto "PROJECT_VERSION.json" "${bundle}/PROJECT_VERSION.json"
 /usr/bin/ditto "LICENSE" "${bundle}/LICENSE"
@@ -50,4 +51,12 @@ unzip -tq "${archive}"
 hash="$(shasum -a 256 "${archive}" | awk '{print $1}')"
 print "${hash}  ${archive:t}" > "${archive}.sha256"
 zsh scripts/build_installer_dmg.sh
+
+# A successful build supersedes local release artifacts. GitHub releases remain
+# untouched and continue to provide the historical downloads when needed.
+for previous_archive in outputs/ClipFlow-complet-v*.zip outputs/ClipFlow-complet-v*.zip.sha256; do
+  [[ -f "${previous_archive}" ]] || continue
+  [[ "${previous_archive}" == "${archive}" || "${previous_archive}" == "${archive}.sha256" ]] && continue
+  /bin/rm -f -- "${previous_archive}"
+done
 print "Distribution créée : ${archive}"

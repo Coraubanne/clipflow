@@ -5,7 +5,7 @@ resource_dir="${0:A:h:h}/Resources"
 payload_dir="${resource_dir}/Payload"
 source_app="${payload_dir}/ClipFlow.app"
 source_extension="${payload_dir}/ClipFlow Chrome"
-source_premiere="${payload_dir}/ClipFlow Premiere"
+source_premiere="${payload_dir}/Creator Bridge"
 target_app="/Applications/ClipFlow.app"
 extension_root="${HOME}/Documents/ClipFlow"
 target_extension="${extension_root}/ClipFlow Chrome"
@@ -51,8 +51,30 @@ fi
 /usr/bin/ditto "${source_extension}" "${target_extension}"
 
 /bin/mkdir -p "${target_premiere:h}"
-/bin/rm -rf "${target_premiere}"
-/usr/bin/ditto "${source_premiere}" "${target_premiere}"
+version_code() {
+  local -a pieces
+  pieces=( ${(s:.:)1} )
+  print $(( ${pieces[1]:-0} * 1000000 + ${pieces[2]:-0} * 1000 + ${pieces[3]:-0} ))
+}
+newest_bridge_code=0
+for installed_bridge in "${target_premiere:h}"/fr.clipflow.premiere.bridge_*; do
+  [[ -d "${installed_bridge}" ]] || continue
+  installed_id="$(/usr/bin/sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${installed_bridge}/manifest.json" | /usr/bin/head -n 1)"
+  [[ "${installed_id}" == "fr.clipflow.premiere.bridge" ]] || continue
+  installed_version="$(/usr/bin/sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${installed_bridge}/manifest.json" | /usr/bin/head -n 1)"
+  installed_code="$(version_code "${installed_version}")"
+  (( installed_code > newest_bridge_code )) && newest_bridge_code=${installed_code}
+done
+source_bridge_code="$(version_code "${premiere_version}")"
+if (( newest_bridge_code <= source_bridge_code )); then
+  /bin/rm -rf "${target_premiere}"
+  /usr/bin/ditto "${source_premiere}" "${target_premiere}"
+  for old_bridge in "${target_premiere:h}"/fr.clipflow.premiere.bridge_*; do
+    [[ -d "${old_bridge}" && "${old_bridge}" != "${target_premiere}" ]] || continue
+    old_id="$(/usr/bin/sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${old_bridge}/manifest.json" | /usr/bin/head -n 1)"
+    [[ "${old_id}" == "fr.clipflow.premiere.bridge" ]] && /bin/rm -rf "${old_bridge}"
+  done
+fi
 
 /bin/mkdir -p "${native_manifest_dir}"
 /usr/bin/printf '%s\n' \

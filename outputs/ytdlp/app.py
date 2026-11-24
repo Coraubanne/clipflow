@@ -499,7 +499,11 @@ def queue_premiere_import(
     inbox.mkdir(parents=True, exist_ok=True, mode=0o700)
     results.mkdir(parents=True, exist_ok=True, mode=0o700)
     payload = {
+        "schemaVersion": 1,
         "jobId": identifier,
+        "producer": "clipflow",
+        "producerName": "ClipFlow",
+        "kind": "media",
         "mediaPath": str(media),
         "projectPath": str(project),
         "requestedAt": int(time.time() * 1000),
@@ -1756,6 +1760,14 @@ def main() -> int:
     if agent_lock is None:
         return 0
     try:
+        if frozen_application():
+            try:
+                from updater import cleanup_installed_duplicates
+
+                cleanup_installed_duplicates(Path(sys.executable).resolve().parents[2])
+            except Exception:
+                # Housekeeping must never prevent a requested download.
+                pass
         recover_orphaned_extension_statuses()
         TubeSaveApp().run_forever()
     finally:

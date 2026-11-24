@@ -67,6 +67,7 @@ class TubeSaveTests(unittest.TestCase):
         self.assertIn("super().__init__(useTk=False)", constructor)
         self.assertNotIn("self._build_ui()", constructor)
         self.assertIn("TubeSaveApp().run_forever()", source)
+        self.assertIn("cleanup_installed_duplicates", source)
         self.assertNotIn("deiconify", reopen)
         self.assertNotIn("deiconify", extension_poll)
 

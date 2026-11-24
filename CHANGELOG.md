@@ -2,6 +2,13 @@
 
 All notable user-facing changes are documented here.
 
+## 2.14.0 — 2026-11-24
+
+- Added verified duplicate cleanup after installation, automatic update and background startup.
+- Kept only the newest validated ClipFlow application and Premiere bridge while preserving newer copies and unrelated applications.
+- Removed inactive legacy extension folders only when their ClipFlow identity and version are verified; active Chrome profile paths are never removed.
+- Removed superseded local ZIP/checksum build artifacts only after the replacement distribution and installer pass their integrity checks.
+
 ## 2.13.3 — 2026-11-19
 
 - Prevented multiple background download engines from running concurrently and corrupting otherwise valid downloads near completion.
