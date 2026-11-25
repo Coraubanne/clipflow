@@ -7,7 +7,7 @@ Cette sauvegarde permet de réinstaller la version actuelle ou de reprendre le d
 - Produit : ClipFlow 2.14.0, version sémantique
 - Application macOS : ClipFlow 2.14.0 (build 62), Apple Silicon ARM64
 - Extension Chrome : ClipFlow 2.14.0, Manifest V3
-- Module Premiere Pro : ClipFlow Premiere 1.0.4
+- Module Premiere Pro partagé : Creator Bridge 1.1.0
 - Moteur : yt-dlp 2026.10.26
 - Environnement de référence : Python 3.13.0 et macOS 26.6.2
 
@@ -15,7 +15,7 @@ Cette sauvegarde permet de réinstaller la version actuelle ou de reprendre le d
 
 - `outputs/ytdlp` : moteur Python, pont natif Chrome, configuration PyInstaller, tests et ressources graphiques.
 - `outputs/ClipFlow Chrome` : extension Chrome complète.
-- `outputs/ClipFlow Premiere` : module UXP pour Premiere Pro.
+- `vendor/CreatorBridge` : référence vers le projet GitHub autonome Creator Bridge ; le code du module UXP n’est plus dupliqué dans ClipFlow.
 - `.git` : dépôt Git local avec tout l’historique utile, afin de reprendre le suivi des modifications immédiatement.
 - `outputs/ClipFlow-Installer.dmg` : installateur macOS unique destiné aux utilisateurs.
 - `outputs/ClipFlow-complet-v2.14.0.zip` : version prête à partager ou réinstaller sans reconstruire le projet.

@@ -22,7 +22,7 @@ La version 2.14.0 embarque `yt-dlp 2026.10.26`, ses bibliothèques réseau offic
 
 ## Premiere Pro
 
-Le module `ClipFlow Premiere` est prévu pour Premiere Pro 25.6 ou plus récent. La destination **Premiere Pro** enregistre le média dans `Médias ClipFlow`, à côté du projet `.prproj` ouvert, puis demande son importation. Le panneau **Fenêtre → Plug-ins UXP → ClipFlow** doit rester chargé dans Premiere. ClipFlow attend jusqu’à trois minutes pour les imports volumineux et ne signale plus le téléchargement comme échoué lorsque seul Premiere tarde à confirmer l’ajout.
+Le module partagé `Creator Bridge` est prévu pour Premiere Pro 25.6 ou plus récent. La destination **Premiere Pro** enregistre le média dans `Médias ClipFlow`, à côté du projet `.prproj` ouvert, puis demande son importation. Le panneau **Fenêtre → Plug-ins UXP → Creator Bridge** doit rester chargé dans Premiere. ClipFlow et Capture8K installent la même version du pont sans créer de doublon. ClipFlow attend jusqu’à trois minutes pour les imports volumineux et ne signale plus le téléchargement comme échoué lorsque seul Premiere tarde à confirmer l’ajout.
 
 ## Limites
 

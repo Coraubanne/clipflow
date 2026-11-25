@@ -21,9 +21,9 @@ L’extension 2.8.1 transmet soit l’adresse du flux direct, soit celle de la p
 
 ## Premiere Pro
 
-Le module UXP `ClipFlow Premiere` utilise l’API officielle de Premiere Pro 25.6 ou plus récent. Lorsqu’un projet `.prproj` enregistré est ouvert, la destination **Premiere Pro** de l’extension crée `Médias ClipFlow` dans le dossier qui contient le projet, télécharge le MP4 à cet endroit, puis l’importe automatiquement à la racine du projet. L’importation ne commence qu’après la disparition de tous les fichiers temporaires : Premiere ne reçoit donc jamais un média incomplet.
+Le module UXP partagé `Creator Bridge` utilise l’API officielle de Premiere Pro 25.6 ou plus récent. Lorsqu’un projet `.prproj` enregistré est ouvert, la destination **Premiere Pro** de l’extension crée `Médias ClipFlow` dans le dossier qui contient le projet, télécharge le MP4 à cet endroit, puis l’importe automatiquement à la racine du projet. L’importation ne commence qu’après la disparition de tous les fichiers temporaires : Premiere ne reçoit donc jamais un média incomplet.
 
-Le petit panneau **Fenêtre → Plug-ins UXP → ClipFlow** doit rester chargé dans Premiere. Il ne télécharge rien et ne copie pas le média : il publie uniquement le chemin du projet actif et traite les demandes d’import locales. Si le projet n’est pas enregistré, si le panneau n’est pas actif ou si Premiere ne répond plus, ClipFlow refuse la destination au lieu d’utiliser silencieusement un mauvais dossier.
+Le petit panneau **Fenêtre → Plug-ins UXP → Creator Bridge** doit rester chargé dans Premiere. Il ne télécharge rien et ne copie pas le média : il publie uniquement le chemin du projet actif et traite les demandes d’import locales de ClipFlow et Capture8K. Si le projet n’est pas enregistré, si le panneau n’est pas actif ou si Premiere ne répond plus, ClipFlow refuse la destination au lieu d’utiliser silencieusement un mauvais dossier.
 
 Pour les médias volumineux, ClipFlow laisse désormais jusqu’à trois minutes à Premiere Pro pour confirmer l’importation. Si Premiere tarde davantage ou refuse l’import, le téléchargement déjà terminé reste considéré comme réussi et disponible dans `Médias ClipFlow` ; seul l’ajout automatique au projet est alors signalé comme incomplet.
 
