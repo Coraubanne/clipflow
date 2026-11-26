@@ -32,8 +32,11 @@ mkdir -p "${bundle}"
 
 /usr/bin/ditto "${app}" "${bundle}/ClipFlow.app"
 /usr/bin/ditto "outputs/ClipFlow Chrome" "${bundle}/ClipFlow Chrome"
+python3 scripts/build_firefox_extension.py "${bundle}/ClipFlow-Firefox-unsigned.xpi"
 /usr/bin/ditto "${creator_bridge}" "${bundle}/Creator Bridge"
 /bin/rm -rf "${bundle}/Creator Bridge/.git" "${bundle}/Creator Bridge/.gitignore"
+# ClipFlow 2.13.3 and earlier require the original directory name in update ZIPs.
+/usr/bin/ditto "${bundle}/Creator Bridge" "${bundle}/ClipFlow Premiere"
 /usr/bin/ditto "outputs/LISEZ-MOI.md" "${bundle}/LISEZ-MOI.md"
 /usr/bin/ditto "PROJECT_VERSION.json" "${bundle}/PROJECT_VERSION.json"
 /usr/bin/ditto "LICENSE" "${bundle}/LICENSE"
@@ -45,6 +48,10 @@ mkdir -p "${bundle}/LICENSES"
 /usr/bin/ditto "LICENSES/GPL-2.0-or-later.txt" "${bundle}/LICENSES/GPL-2.0-or-later.txt"
 
 archive="outputs/ClipFlow-complet-${release_tag}.zip"
+if [[ -n "${CLIPFLOW_PACKAGE_DIR:-}" ]]; then
+  archive="${CLIPFLOW_PACKAGE_DIR}/${archive:t}"
+  mkdir -p "${CLIPFLOW_PACKAGE_DIR}"
+fi
 rm -f "${archive}" "${archive}.sha256"
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "${bundle}" "${archive}"
 unzip -tq "${archive}"
@@ -54,9 +61,10 @@ zsh scripts/build_installer_dmg.sh
 
 # A successful build supersedes local release artifacts. GitHub releases remain
 # untouched and continue to provide the historical downloads when needed.
-for previous_archive in outputs/ClipFlow-complet-v*.zip outputs/ClipFlow-complet-v*.zip.sha256; do
-  [[ -f "${previous_archive}" ]] || continue
-  [[ "${previous_archive}" == "${archive}" || "${previous_archive}" == "${archive}.sha256" ]] && continue
-  /bin/rm -f -- "${previous_archive}"
-done
+if [[ -z "${CLIPFLOW_PACKAGE_DIR:-}" ]]; then
+  for previous_archive in outputs/ClipFlow-complet-v*.zip(N.) outputs/ClipFlow-complet-v*.zip.sha256(N.); do
+    [[ "${previous_archive}" == "${archive}" || "${previous_archive}" == "${archive}.sha256" ]] && continue
+    /bin/rm -f -- "${previous_archive}"
+  done
+fi
 print "Distribution créée : ${archive}"

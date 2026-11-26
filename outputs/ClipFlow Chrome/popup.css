@@ -290,6 +290,7 @@ select {
   display: grid;
   gap: 5px;
 }
+.update-option [hidden] { display: none; }
 
 .update-option button,
 .download {

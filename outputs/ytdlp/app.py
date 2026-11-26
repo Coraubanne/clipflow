@@ -28,6 +28,7 @@ from urllib.parse import parse_qs, urlparse
 
 APP_NAME = "ClipFlow"
 CHROME_EXTENSION_ID = "emfjpphkcgnjldilcnieaoppmfpfkhfg"
+FIREFOX_EXTENSION_ID = "clipflow@coraubanne"
 NATIVE_HOST_NAME = "fr.tubesave.chrome"
 YOUTUBE_HOSTS = {
     "youtube.com",
@@ -375,9 +376,12 @@ def automatic_browser_session_enabled(home: Path | None = None) -> bool:
     )
 
 
+ExtensionRequest = tuple[str, Path, str, str | None, str | None, str | None, Path | None, Path | None, bool, str]
+
+
 def extension_request_values(
     request: object,
-) -> tuple[str, Path, str, str | None, str | None, str | None, Path | None, Path | None, bool]:
+) -> ExtensionRequest:
     if not isinstance(request, dict):
         raise ValueError("Demande Chrome invalide.")
     url = request.get("url")
@@ -446,14 +450,15 @@ def extension_request_values(
         premiere_project,
         premiere_bridge,
         completion_sound,
+        "firefox" if request.get("browser") == "firefox" else "chrome",
     )
 
 
 def consume_extension_requests(
     inbox: Path,
     limit: int = 20,
-) -> list[tuple[str, Path, str, str | None, str | None, str | None, Path | None, Path | None, bool]]:
-    requests: list[tuple[str, Path, str, str | None, str | None, str | None, Path | None, Path | None, bool]] = []
+) -> list[ExtensionRequest]:
+    requests: list[ExtensionRequest] = []
     if limit <= 0:
         return requests
     try:
@@ -554,7 +559,9 @@ def wait_for_premiere_import(
     )
 
 
-def ensure_chrome_native_host(home: Path | None = None, host: Path | None = None) -> Path | None:
+def ensure_native_host(
+    browser: str, home: Path | None = None, host: Path | None = None,
+) -> Path | None:
     native_host = (host or (application_resources() / "ytdlp" / "native_host")).resolve()
     if not native_host.is_file() and not frozen_application():
         native_host = (application_resources() / "native_host").resolve()
@@ -562,16 +569,17 @@ def ensure_chrome_native_host(home: Path | None = None, host: Path | None = None
         return None
     manifest = {
         "name": NATIVE_HOST_NAME,
-        "description": "Liaison locale entre Chrome et ClipFlow",
+        "description": "Liaison locale entre ClipFlow et le navigateur",
         "path": str(native_host),
         "type": "stdio",
-        "allowed_origins": [f"chrome-extension://{CHROME_EXTENSION_ID}/"],
     }
-    target = (
-        (home or Path.home())
-        / "Library/Application Support/Google/Chrome/NativeMessagingHosts"
-        / f"{NATIVE_HOST_NAME}.json"
-    )
+    if browser == "firefox":
+        manifest["allowed_extensions"] = [FIREFOX_EXTENSION_ID]
+        relative_folder = "Mozilla"
+    else:
+        manifest["allowed_origins"] = [f"chrome-extension://{CHROME_EXTENSION_ID}/"]
+        relative_folder = "Google/Chrome"
+    target = (home or Path.home()) / "Library/Application Support" / relative_folder / "NativeMessagingHosts" / f"{NATIVE_HOST_NAME}.json"
     try:
         target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         content = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
@@ -581,6 +589,10 @@ def ensure_chrome_native_host(home: Path | None = None, host: Path | None = None
     except OSError:
         return None
     return target
+
+
+def ensure_chrome_native_host(home: Path | None = None, host: Path | None = None) -> Path | None:
+    return ensure_native_host("chrome", home, host)
 
 
 def yt_dlp_prefix() -> list[str] | None:
@@ -1207,9 +1219,7 @@ class TubeSaveApp(tk.Tk):
         self.browser = chromium_browser()
         self.ffmpeg = ffmpeg_executable()
         self.format_details = ""
-        self.extension_jobs: deque[
-            tuple[str, Path, str, str | None, str | None, str | None, Path | None, Path | None, bool]
-        ] = deque()
+        self.extension_jobs: deque[ExtensionRequest] = deque()
         self.active_job_id: str | None = None
         self.active_premiere_project: Path | None = None
         self.active_premiere_bridge: Path | None = None
@@ -1220,8 +1230,10 @@ class TubeSaveApp(tk.Tk):
         self.premiere_import_pending = False
         self.request_referer: str | None = None
         self.request_source_title: str | None = None
+        self.request_browser = "chrome"
         self.extension_inbox = extension_inbox()
         self.native_host_manifest = ensure_chrome_native_host()
+        ensure_native_host("firefox")
         self.automatic_browser_session = automatic_browser_session_enabled()
 
         self.url = HeadlessValue()
@@ -1445,8 +1457,12 @@ class TubeSaveApp(tk.Tk):
             return
         self.request_referer = None
         self.request_source_title = None
-        profile_name = last_used_browser_profile(self.browser)
-        cookie_source = browser_cookie_source(self.browser, profile_name)
+        if self.request_browser == "firefox":
+            cookie_source = "firefox"
+        else:
+            profile_name = last_used_browser_profile(self.browser)
+            cookie_source = browser_cookie_source(self.browser, profile_name)
+        self.request_browser = "chrome"
         self.last_file = None
         self.result_was_existing = False
         self.logs.clear()
@@ -1485,11 +1501,14 @@ class TubeSaveApp(tk.Tk):
                         consume_extension_requests(self.extension_inbox, limit=1)
                     )
                 if self.extension_jobs:
-                    url, destination, quality, referer, source_title, job_id, premiere_project, premiere_bridge, completion_sound = self.extension_jobs.popleft()
+                    (
+                        url, destination, quality, referer, source_title, job_id,
+                        premiere_project, premiere_bridge, completion_sound, self.request_browser,
+                    ) = self.extension_jobs.popleft()
                     self.active_job_id = job_id
                     self.active_premiere_project = premiere_project
                     self.active_premiere_bridge = premiere_bridge
-                    # Every queued request comes from Chrome, including legacy requests
+                    # Every queued request comes from an extension, including legacy requests
                     # without a job identifier. It must therefore stay non-interactive.
                     self.background_job = True
                     self.completion_sound_enabled = completion_sound
@@ -1744,6 +1763,9 @@ class TubeSaveApp(tk.Tk):
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "--clipflow-register-browser-hosts":
+        registrations = [ensure_native_host(browser) for browser in ("chrome", "firefox")]
+        return 0 if all(registrations) else 1
     if len(sys.argv) > 1 and sys.argv[1] == "--tubesave-yt-dlp":
         if frozen_application():
             import yt_dlp_plugins.extractor.ytjsc  # noqa: F401

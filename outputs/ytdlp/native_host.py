@@ -9,6 +9,7 @@ import os
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -246,6 +247,8 @@ def validated_download_job(message: dict[str, object], home: Path | None = None)
         "completionSound": message.get("completionSound", True) is not False,
         "language": interface_language(message),
     }
+    if message.get("browser") == "firefox":
+        job["browser"] = "firefox"
     if premiere_project is not None:
         job["premiereProjectPath"] = str(premiere_project)
         job["premiereBridgePath"] = str(premiere_bridge)
@@ -425,6 +428,43 @@ def handle_message(message: object) -> dict[str, object]:
         from updater import latest_release
 
         return latest_release()
+    if action in {"sync_bridge_destination", "check_bridge_update", "install_bridge_update"}:
+        browser = "firefox" if message.get("browser") == "firefox" else "chrome"
+        preference = inbox_directory().parent / f"bridge-destination-{browser}.json"
+        if action == "sync_bridge_destination":
+            mode = "premiere" if message.get("destination") == "premiere" else "local"
+            preference.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            with tempfile.NamedTemporaryFile(mode="w", dir=preference.parent, delete=False, encoding="utf-8") as stream:
+                temporary = Path(stream.name)
+                try:
+                    json.dump({"outputMode": mode}, stream)
+                    stream.flush()
+                    temporary.replace(preference)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            return {"ok": True}
+        try:
+            allowed = json.loads(preference.read_text(encoding="utf-8")) == {"outputMode": "premiere"}
+        except (OSError, ValueError):
+            allowed = False
+        if not allowed:
+            return {"ok": True, "available": False}
+        helper = (
+            app_bundle() / "Contents/Resources/ytdlp/creator-bridge-update.sh"
+            if getattr(sys, "frozen", False)
+            else Path(__file__).with_name("creator-bridge-update.sh")
+        )
+        mode = "check" if action == "check_bridge_update" else "install"
+        version = str(message.get("version", ""))[:32]
+        try:
+            result = subprocess.run(
+                ["/bin/zsh", str(helper), mode, version, str(Path.home()), str(preference)],
+                capture_output=True, check=True,
+                text=True, timeout=55,
+            )
+            return json.loads(result.stdout)
+        except (subprocess.SubprocessError, OSError, ValueError):
+            return {"ok": False}
     if action == "install_update":
         from updater import install_release
 
@@ -433,6 +473,7 @@ def handle_message(message: object) -> dict[str, object]:
             int(message.get("archiveAssetId", 0)),
             int(message.get("checksumAssetId", 0)),
             app_bundle(),
+            allow_without_chrome=message.get("browser") == "firefox",
         )
         if language == "en" and response.get("installed"):
             response["message"] = "ClipFlow was updated. Restart Premiere Pro if it was open."

@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.14.0")
+        self.assertEqual(manifest["version"], "2.16.1")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,8 +27,8 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.14.0"', source)
-        self.assertIn("chrome.runtime.reload()", source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.16.1"', source)
+        self.assertIn("browserApi.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
         self.assertIn('return "DASH"', source)
@@ -36,8 +36,8 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_update_cache_is_invalidated_after_an_extension_upgrade(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn("const installedVersion = chrome.runtime.getManifest().version", source)
-        self.assertIn('String(cached.currentVersion || "") === installedVersion', source)
+        self.assertIn("const installedVersion = browserApi.runtime.getManifest().version", source)
+        self.assertIn('String(cached.extensionVersion || "") === installedVersion', source)
 
     def test_video_cards_show_available_thumbnails(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
@@ -47,7 +47,7 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("value.thumbnailUrl", source)
         self.assertIn("https://i.ytimg.com/vi/", source)
         self.assertIn("function captureVideoFrame(video)", source)
-        self.assertIn("chrome.tabs.captureVisibleTab", source)
+        self.assertIn("browserApi.tabs.captureVisibleTab", source)
         self.assertIn("function croppedVisibleThumbnail", source)
         self.assertIn("await enrichWeakThumbnails(tab, selectedVideos)", source)
         self.assertIn('thumbnail.className = "video-thumbnail"', source)
@@ -201,17 +201,17 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_background_captures_tf1_manifests_without_treating_nodrm_as_drm(self):
         source = (EXTENSION / "background.js").read_text(encoding="utf-8")
-        self.assertIn("chrome.webRequest.onHeadersReceived", source)
+        self.assertIn("browserApi.webRequest.onHeadersReceived", source)
         self.assertIn("application/dash+xml", source.replace(r"dash\+xml", "application/dash+xml"))
         self.assertIn("no[-_]?drm", source)
         self.assertIn('parsed.hostname === "delivery.tf1.fr"', source)
-        self.assertIn("chrome.webRequest.onBeforeSendHeaders", source)
+        self.assertIn("browserApi.webRequest.onBeforeSendHeaders", source)
         self.assertIn('url.searchParams.set("format", "hls")', source)
         self.assertIn('source: "tf1-hls"', source)
         self.assertIn("apiMarksDrm", source)
         self.assertNotIn("if (hasDrm)", source)
         self.assertIn('headers = { Authorization: authorization }', source)
-        self.assertIn('await chrome.tabs.reload(tabId)', source)
+        self.assertIn('await browserApi.tabs.reload(tabId)', source)
         self.assertIn('url: streamUrl', source)
         self.assertIn('TF1_PENDING_TTL', source)
         self.assertIn('explicitlyClear', source)
@@ -285,9 +285,9 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("convertir en MP4", source)
         self.assertIn('"Télécharger et convertir en MP4"', source)
         self.assertIn("if (!accepted) return;", source)
-        click_handler = source.index('button.addEventListener("click", () => {')
+        click_handler = source.index('button.addEventListener("click", async () => {')
         confirmation = source.index("window.confirm(", click_handler)
-        send_download = source.index("chrome.runtime.sendMessage({", confirmation)
+        send_download = source.index("runtimeMessage({", confirmation)
         self.assertLess(confirmation, send_download)
 
     def test_substack_native_players_use_their_public_mp4_sources(self):

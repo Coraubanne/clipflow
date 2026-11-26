@@ -20,6 +20,7 @@ from app import (
     consume_extension_requests,
     drm_protected_output,
     ensure_chrome_native_host,
+    ensure_native_host,
     extension_request_values,
     hide_visible_partials,
     is_web_url,
@@ -625,7 +626,7 @@ class TubeSaveTests(unittest.TestCase):
     def test_extension_request_sets_quality_and_destination(self):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory)
-            url, folder, quality, referer, source_title, job_id, premiere_project, premiere_bridge, completion_sound = extension_request_values(
+            url, folder, quality, referer, source_title, job_id, premiere_project, premiere_bridge, completion_sound, browser = extension_request_values(
                 {
                     "url": "https://cdn.example.com/video/master.m3u8",
                     "quality": "best",
@@ -645,6 +646,7 @@ class TubeSaveTests(unittest.TestCase):
         self.assertIsNone(premiere_project)
         self.assertIsNone(premiere_bridge)
         self.assertFalse(completion_sound)
+        self.assertEqual(browser, "chrome")
 
     def test_extension_inbox_is_consumed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -770,6 +772,20 @@ class TubeSaveTests(unittest.TestCase):
             data["allowed_origins"],
             ["chrome-extension://emfjpphkcgnjldilcnieaoppmfpfkhfg/"],
         )
+
+    def test_firefox_native_host_only_allows_clipflow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            host = home / "native_host"
+            host.touch(mode=0o755)
+            manifest = ensure_native_host("firefox", home, host)
+            self.assertEqual(
+                manifest.relative_to(home).as_posix(),
+                "Library/Application Support/Mozilla/NativeMessagingHosts/fr.tubesave.chrome.json",
+            )
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertEqual(data["allowed_extensions"], ["clipflow@coraubanne"])
+            self.assertNotIn("allowed_origins", data)
 
     def test_watchdog_only_limits_youtube_validation(self):
         self.assertTrue(validation_timed_out(100.0, False, 161.0))

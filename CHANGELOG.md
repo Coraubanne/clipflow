@@ -2,6 +2,13 @@
 
 All notable user-facing changes are documented here.
 
+## 2.16.1 — 2026-11-26
+
+- Added a Firefox extension backed by the same macOS companion used by Chrome.
+- Added a separate Creator Bridge update check when Premiere Pro is selected as the destination.
+- Serialized shared plugin installation and cleanup with a common lock.
+- Kept the update ZIP compatible with earlier ClipFlow installers.
+
 ## 2.14.0 — 2026-11-24
 
 - Added verified duplicate cleanup after installation, automatic update and background startup.

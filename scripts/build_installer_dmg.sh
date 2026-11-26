@@ -14,6 +14,10 @@ premiere="${creator_bridge}"
 installer_source="installer/ClipFlowInstaller"
 info_source="installer/Info.plist"
 output="outputs/ClipFlow-Installer.dmg"
+if [[ -n "${CLIPFLOW_PACKAGE_DIR:-}" ]]; then
+  output="${CLIPFLOW_PACKAGE_DIR}/${output:t}"
+  /bin/mkdir -p "${CLIPFLOW_PACKAGE_DIR}"
+fi
 
 for required in "${app}" "${extension}" "${premiere}" "${installer_source}" "${info_source}"; do
   if [[ ! -e "${required}" ]]; then
@@ -46,6 +50,7 @@ fi
 /usr/bin/ditto "${icon}" "${resources}/ClipFlow.icns"
 /usr/bin/ditto "${app}" "${payload}/ClipFlow.app"
 /usr/bin/ditto "${extension}" "${payload}/ClipFlow Chrome"
+python3 scripts/build_firefox_extension.py "${payload}/ClipFlow-Firefox-unsigned.xpi"
 /usr/bin/ditto "${premiere}" "${payload}/Creator Bridge"
 /bin/rm -rf "${payload}/Creator Bridge/.git" "${payload}/Creator Bridge/.gitignore"
 /usr/bin/ditto "LICENSE" "${resources}/LICENSE"

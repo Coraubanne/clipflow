@@ -1,10 +1,12 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.14.0";
+const EXPECTED_EXTENSION_VERSION = "2.16.1";
+const browserApi = globalThis.browser ?? globalThis.chrome;
+const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
-if (chrome.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
+if (browserApi.runtime.getManifest().version !== EXPECTED_EXTENSION_VERSION) {
   // Une extension non empaquetée ne recharge pas toujours son service worker
   // quand ses fichiers changent. L’ouverture du popup applique la mise à jour.
-  chrome.runtime.reload();
+  browserApi.runtime.reload();
 }
 const DEFAULT_SETTINGS = {
   settingsVersion: SETTINGS_VERSION,
@@ -31,6 +33,10 @@ const UI_TEXT = {
     preparing: "Préparation…", analyzingPage: "Analyse de la page…", rescan: "Relancer l’analyse",
     searchingPlayers: "Recherche des lecteurs vidéo…", engineUnavailable: "Le moteur ClipFlow est indisponible.",
     updateFailed: "La demande de mise à jour a échoué.", installVersion: "Installer ClipFlow v{version}",
+    installBridge: "Installer Creator Bridge {version}",
+    bridgeCheckFailed: "Impossible de vérifier Creator Bridge.",
+    bridgeInstallFailed: "Installation de Creator Bridge impossible. Relancez la vérification.",
+    bridgeInstalled: "Creator Bridge est à jour. Redémarrez Premiere Pro s’il est ouvert.",
     updateAvailable: "Nouvelle version disponible · application, extension et module Premiere Pro.",
     upToDate: "ClipFlow v{version} est à jour.", checking: "Vérification…",
     secureGithub: "Connexion sécurisée à GitHub…", retry: "Réessayer", installing: "Installation…",
@@ -43,7 +49,7 @@ const UI_TEXT = {
     drmManifest: "Le manifeste de cette source est chiffré par DRM.", downloadConvert: "Télécharger et convertir en MP4",
     send: "Envoi…", unavailable: "ClipFlow est indisponible.", tf1Preparing: "Préparation automatique du flux TF1…",
     startedBackground: "Téléchargement démarré en arrière-plan.", inProgress: "En cours",
-    chromePageUnsupported: "Cette page Chrome ne peut pas être analysée.", pageNoResponse: "La page n’a pas répondu à l’analyse.",
+    chromePageUnsupported: "Cette page du navigateur ne peut pas être analysée.", pageNoResponse: "La page n’a pas répondu à l’analyse.",
     hlsUnavailable: "Le flux HLS TF1 est indisponible.", drmPlayer: "Un lecteur protégé par DRM a été détecté. Son flux chiffré ne peut pas être téléchargé.",
     noVideo: "Aucune vidéo visible. Lancez la lecture quelques secondes puis relancez l’analyse.",
     scanFailed: "Impossible d’analyser cette page.", webmConfirm: "Cette vidéo est au format WebM. ClipFlow doit la convertir en MP4 pour la rendre compatible avec macOS et Premiere Pro. Voulez-vous continuer ?",
@@ -66,6 +72,10 @@ const UI_TEXT = {
     preparing: "Preparing…", analyzingPage: "Analyzing page…", rescan: "Scan again",
     searchingPlayers: "Looking for video players…", engineUnavailable: "The ClipFlow engine is unavailable.",
     updateFailed: "The update request failed.", installVersion: "Install ClipFlow v{version}",
+    installBridge: "Install Creator Bridge {version}",
+    bridgeCheckFailed: "Could not check for Creator Bridge updates.",
+    bridgeInstallFailed: "Could not install Creator Bridge. Check for updates again.",
+    bridgeInstalled: "Creator Bridge is up to date. Restart Premiere Pro if it is open.",
     updateAvailable: "New version available · app, extension and Premiere Pro panel.",
     upToDate: "ClipFlow v{version} is up to date.", checking: "Checking…",
     secureGithub: "Securely connecting to GitHub…", retry: "Try again", installing: "Installing…",
@@ -78,7 +88,7 @@ const UI_TEXT = {
     drmManifest: "This source manifest is DRM-encrypted.", downloadConvert: "Download and convert to MP4",
     send: "Sending…", unavailable: "ClipFlow is unavailable.", tf1Preparing: "Automatically preparing the TF1 stream…",
     startedBackground: "Download started in the background.", inProgress: "In progress",
-    chromePageUnsupported: "This Chrome page cannot be analyzed.", pageNoResponse: "The page did not respond to analysis.",
+    chromePageUnsupported: "This browser page cannot be analyzed.", pageNoResponse: "The page did not respond to analysis.",
     hlsUnavailable: "The TF1 HLS stream is unavailable.", drmPlayer: "A DRM-protected player was detected. Its encrypted stream cannot be downloaded.",
     noVideo: "No visible video. Start playback for a few seconds, then scan again.",
     scanFailed: "Unable to analyze this page.", webmConfirm: "This video uses WebM. ClipFlow must convert it to MP4 for macOS and Premiere Pro compatibility. Continue?",
@@ -109,6 +119,11 @@ const progressPercent = document.getElementById("progress-percent");
 const progressFill = document.getElementById("progress-fill");
 const checkUpdate = document.getElementById("check-update");
 const updateStatus = document.getElementById("update-status");
+const bridgeUpdateStatus = document.getElementById("bridge-update-status");
+const installBridgeUpdate = document.getElementById("install-bridge-update");
+let bridgeUpdate = null;
+let bridgeFeedback = "";
+let bridgeRequest = 0;
 const extensionVersion = document.getElementById("extension-version");
 let displayedProgress = 0;
 let progressAnimation = null;
@@ -118,7 +133,7 @@ let lastUpdateResponse = null;
 
 function activeLanguage() {
   if (settings.language === "fr" || settings.language === "en") return settings.language;
-  return String(chrome.i18n.getUILanguage?.() || navigator.language || "en").toLowerCase().startsWith("fr") ? "fr" : "en";
+  return String(browserApi.i18n.getUILanguage?.() || navigator.language || "en").toLowerCase().startsWith("fr") ? "fr" : "en";
 }
 
 function t(key, values = {}) {
@@ -143,22 +158,20 @@ function applyLanguage() {
   document.querySelectorAll("[data-i18n-aria]").forEach((element) => {
     element.setAttribute("aria-label", t(element.dataset.i18nAria));
   });
-  extensionVersion.textContent = t("extensionVersion", { version: chrome.runtime.getManifest().version });
+  extensionVersion.textContent = t("extensionVersion", { version: browserApi.runtime.getManifest().version });
   if (lastUpdateResponse) displayUpdate(lastUpdateResponse);
+  renderBridgeUpdate();
 }
 
-function runtimeMessage(message) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(t("engineUnavailable")));
-      } else if (!response?.ok) {
-        reject(new Error(response?.error || t("updateFailed")));
-      } else {
-        resolve(response);
-      }
-    });
-  });
+async function runtimeMessage(message) {
+  let response;
+  try {
+    response = await browserApi.runtime.sendMessage(message);
+  } catch {
+    throw new Error(t("engineUnavailable"));
+  }
+  if (!response?.ok) throw new Error(response?.error || t("updateFailed"));
+  return response;
 }
 
 function displayUpdate(response) {
@@ -176,12 +189,12 @@ function displayUpdate(response) {
 
 async function findUpdate(manual = false) {
   if (!manual) {
-    const stored = await chrome.storage.local.get("clipFlowUpdateCheck");
+    const stored = await browserApi.storage.local.get("clipFlowUpdateCheck");
     const cached = stored.clipFlowUpdateCheck;
-    const installedVersion = chrome.runtime.getManifest().version;
+    const installedVersion = browserApi.runtime.getManifest().version;
     if (
       cached
-      && String(cached.currentVersion || "") === installedVersion
+      && String(cached.extensionVersion || "") === installedVersion
       && Date.now() - Number(cached.checkedAt || 0) < UPDATE_CHECK_INTERVAL
     ) {
       displayUpdate(cached);
@@ -193,8 +206,8 @@ async function findUpdate(manual = false) {
   updateStatus.textContent = t("secureGithub");
   try {
     const response = await runtimeMessage({ type: "check_update", language: activeLanguage() });
-    const cached = { ...response, checkedAt: Date.now() };
-    await chrome.storage.local.set({ clipFlowUpdateCheck: cached });
+    const cached = { ...response, extensionVersion: browserApi.runtime.getManifest().version, checkedAt: Date.now() };
+    await browserApi.storage.local.set({ clipFlowUpdateCheck: cached });
     displayUpdate(cached);
   } catch (error) {
     updateStatus.textContent = error.message;
@@ -221,17 +234,53 @@ async function installAvailableUpdate() {
       checksumAssetId: availableUpdate.checksumAssetId,
       language: activeLanguage(),
     });
-    await chrome.storage.local.remove("clipFlowUpdateCheck");
+    await browserApi.storage.local.remove("clipFlowUpdateCheck");
     updateStatus.textContent = activeLanguage() === "en"
       ? "ClipFlow was updated. Restart Premiere Pro if it was open."
       : (response.message || t("updateInstalled"));
     checkUpdate.textContent = t("updateComplete");
-    setTimeout(() => chrome.runtime.reload(), 900);
+    if (!isFirefox) setTimeout(() => browserApi.runtime.reload(), 900);
   } catch (error) {
     updateStatus.textContent = error.message;
     checkUpdate.textContent = t("retryInstall");
     checkUpdate.disabled = false;
   }
+}
+
+function renderBridgeUpdate() {
+  const premiere = settings.destination === "premiere";
+  installBridgeUpdate.hidden = !premiere || !bridgeUpdate;
+  if (bridgeUpdate) installBridgeUpdate.textContent = t("installBridge", { version: bridgeUpdate });
+  bridgeUpdateStatus.hidden = !premiere || !bridgeFeedback;
+  bridgeUpdateStatus.textContent = bridgeFeedback ? t(bridgeFeedback) : "";
+}
+
+function resetBridgeUpdate() {
+  bridgeRequest += 1;
+  bridgeUpdate = null;
+  bridgeFeedback = "";
+  renderBridgeUpdate();
+}
+
+async function updateCreatorBridge(install = false) {
+  if (settings.destination !== "premiere") return;
+  const version = bridgeUpdate;
+  const request = ++bridgeRequest;
+  bridgeUpdate = null;
+  bridgeFeedback = install ? "installing" : "checking";
+  renderBridgeUpdate();
+  try {
+    const result = await runtimeMessage({
+      type: install ? "install_bridge_update" : "check_bridge_update", version, language: activeLanguage(),
+    });
+    if (request !== bridgeRequest) return;
+    bridgeUpdate = result.available ? result.latestVersion : null;
+    bridgeFeedback = install ? "bridgeInstalled" : "";
+  } catch {
+    if (request !== bridgeRequest) return;
+    bridgeFeedback = install ? "bridgeInstallFailed" : "bridgeCheckFailed";
+  }
+  renderBridgeUpdate();
 }
 
 function setSettingsOpen(open) {
@@ -243,11 +292,17 @@ function setSettingsOpen(open) {
 
 async function saveSettings() {
   settings.settingsVersion = SETTINGS_VERSION;
-  await chrome.storage.local.set({ tubeSaveSettings: settings });
+  await browserApi.storage.local.set({ tubeSaveSettings: settings });
+}
+
+async function saveDestination() {
+  await saveSettings();
+  await runtimeMessage({ type: "sync_bridge_destination", language: activeLanguage() })
+    .catch(() => {});
 }
 
 async function loadSettings() {
-  const stored = await chrome.storage.local.get("tubeSaveSettings");
+  const stored = await browserApi.storage.local.get("tubeSaveSettings");
   const previous = stored.tubeSaveSettings || {};
   settings = {
     ...DEFAULT_SETTINGS,
@@ -281,7 +336,7 @@ async function loadSettings() {
     destination.insertBefore(option, destination.querySelector('option[value="choose"]'));
   }
   destination.value = settings.destination;
-  await saveSettings();
+  await saveDestination();
 }
 
 async function detectVideosOnPage(uiLanguage = "fr") {
@@ -888,13 +943,9 @@ function showProgress(jobId, tabId, destinationLabel = t("downloads"), button = 
   animateProgress(displayedProgress);
   if (progressPoll) clearTimeout(progressPoll);
 
-  const poll = () => {
-    chrome.runtime.sendMessage({ type: "download_status", jobId, tabId: Number(tabId), language: activeLanguage() }, (response) => {
-      if (chrome.runtime.lastError || !response?.ok) {
-        progressDetail.textContent = response?.error || t("stateUnavailable");
-        progressPoll = setTimeout(poll, 1200);
-        return;
-      }
+  const poll = async () => {
+    try {
+      const response = await runtimeMessage({ type: "download_status", jobId, tabId: Number(tabId), language: activeLanguage() });
       animateProgress(response.progress);
       progressDetail.textContent = response.message || t("downloading");
       if (response.state === "complete") {
@@ -920,20 +971,22 @@ function showProgress(jobId, tabId, destinationLabel = t("downloads"), button = 
         return;
       }
       progressPoll = setTimeout(poll, 700);
-    });
+    } catch (error) {
+      progressDetail.textContent = error.message || t("stateUnavailable");
+      progressPoll = setTimeout(poll, 1200);
+    }
   };
   poll();
 }
 
-function restoreActiveProgress(tabId) {
-    chrome.runtime.sendMessage({ type: "get_active_job", tabId, language: activeLanguage() }, (response) => {
-    const job = response?.job;
-    if (chrome.runtime.lastError || !response?.ok || !job?.jobId) return;
-    if (Date.now() - Number(job.updatedAt || 0) > 24 * 60 * 60 * 1000) return;
-    showProgress(job.jobId, tabId, job.destinationLabel);
-    animateProgress(job.progress || 1);
-    if (job.message) progressDetail.textContent = job.message;
-  });
+async function restoreActiveProgress(tabId) {
+  const response = await runtimeMessage({ type: "get_active_job", tabId, language: activeLanguage() }).catch(() => null);
+  const job = response?.job;
+  if (!job?.jobId) return;
+  if (Date.now() - Number(job.updatedAt || 0) > 24 * 60 * 60 * 1000) return;
+  showProgress(job.jobId, tabId, job.destinationLabel);
+  animateProgress(job.progress || 1);
+  if (job.message) progressDetail.textContent = job.message;
 }
 
 function requiresWebmConversion(video) {
@@ -946,12 +999,7 @@ function requiresWebmConversion(video) {
 }
 
 function capturedTabImage(windowId) {
-  return new Promise((resolve) => {
-    chrome.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 72 }, (dataUrl) => {
-      if (chrome.runtime.lastError || !dataUrl) resolve("");
-      else resolve(dataUrl);
-    });
-  });
+  return browserApi.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 72 }).catch(() => "");
 }
 
 function croppedVisibleThumbnail(screenshotUrl, rect) {
@@ -1056,7 +1104,7 @@ function createVideoCard(video, index) {
     return card;
   }
 
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     if (requiresWebmConversion(video)) {
       const accepted = window.confirm(
         t("webmConfirm"),
@@ -1066,26 +1114,21 @@ function createVideoCard(video, index) {
     button.disabled = true;
     button.textContent = t("send");
     feedback.textContent = "";
-    chrome.runtime.sendMessage({
-      type: "download",
-      tabId: activePage.tabId,
-      url: video.url,
-      referer: video.url === activePage.pageUrl ? "" : activePage.pageUrl,
-      sourceTitle: video.label || activePage.pageTitle || "",
-      quality: settings.audioOnly ? "audio" : "best",
-      completionSound: settings.completionSound,
-      destination: settings.destination,
-      destinationPath: settings.destinationPath,
-      settingsVersion: SETTINGS_VERSION,
-      language: activeLanguage(),
-    }, (response) => {
-      button.disabled = false;
+    try {
+      const response = await runtimeMessage({
+        type: "download",
+        tabId: activePage.tabId,
+        url: video.url,
+        referer: video.url === activePage.pageUrl ? "" : activePage.pageUrl,
+        sourceTitle: video.label || activePage.pageTitle || "",
+        quality: settings.audioOnly ? "audio" : "best",
+        completionSound: settings.completionSound,
+        destination: settings.destination,
+        destinationPath: settings.destinationPath,
+        settingsVersion: SETTINGS_VERSION,
+        language: activeLanguage(),
+      });
       button.textContent = defaultButtonLabel;
-      if (chrome.runtime.lastError || !response?.ok) {
-        feedback.dataset.kind = "error";
-        feedback.textContent = response?.error || t("unavailable");
-        return;
-      }
       feedback.dataset.kind = "success";
       feedback.textContent = response.preparing
         ? t("tf1Preparing")
@@ -1097,7 +1140,12 @@ function createVideoCard(video, index) {
         button.disabled = false;
         button.textContent = defaultButtonLabel;
       }
-    });
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = defaultButtonLabel;
+      feedback.dataset.kind = "error";
+      feedback.textContent = error.message || t("unavailable");
+    }
   });
 
   card.dataset.index = String(index);
@@ -1111,20 +1159,20 @@ async function scan() {
   setStatus(t("searchingPlayers"));
   rescan.disabled = true;
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await browserApi.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id || !/^https?:/i.test(tab.url || "")) {
       throw new Error(t("chromePageUnsupported"));
     }
     restoreActiveProgress(tab.id);
     let results;
     try {
-      results = await chrome.scripting.executeScript({
+      results = await browserApi.scripting.executeScript({
         target: { tabId: tab.id, allFrames: true },
         func: detectVideosOnPage,
         args: [activeLanguage()],
       });
     } catch (_frameError) {
-      results = await chrome.scripting.executeScript({
+      results = await browserApi.scripting.executeScript({
         target: { tabId: tab.id },
         func: detectVideosOnPage,
         args: [activeLanguage()],
@@ -1172,7 +1220,7 @@ async function scan() {
     let monitoredMedia = [];
     let tf1Status = null;
     try {
-      const monitored = await chrome.runtime.sendMessage({ type: "get_network_media", tabId: tab.id, language: activeLanguage() });
+      const monitored = await runtimeMessage({ type: "get_network_media", tabId: tab.id, language: activeLanguage() });
       if (monitored?.ok) {
         if (Array.isArray(monitored.media)) monitoredMedia = monitored.media;
         tf1Status = monitored.tf1Status || null;
@@ -1266,13 +1314,8 @@ language.addEventListener("change", async () => {
 destination.addEventListener("change", async () => {
   if (destination.value === "choose") {
     destination.disabled = true;
-    chrome.runtime.sendMessage({ type: "choose_folder", language: activeLanguage() }, async (response) => {
-      destination.disabled = false;
-      if (chrome.runtime.lastError || !response?.ok) {
-        destination.value = settings.destination;
-        if (response?.error) setStatus(response.error, "error");
-        return;
-      }
+    try {
+      const response = await runtimeMessage({ type: "choose_folder", language: activeLanguage() });
       settings.destination = "custom";
       settings.destinationPath = response.path;
       settings.destinationLabel = response.label || t("chosenFolder");
@@ -1284,23 +1327,34 @@ destination.addEventListener("change", async () => {
       }
       custom.textContent = settings.destinationLabel;
       destination.value = "custom";
-      await saveSettings();
-    });
+      resetBridgeUpdate();
+      await saveDestination();
+    } catch (error) {
+      destination.value = settings.destination;
+      setStatus(error.message, "error");
+    } finally {
+      destination.disabled = false;
+    }
     return;
   }
   settings.destination = destination.value;
+  resetBridgeUpdate();
   if (settings.destination !== "custom") {
     settings.destinationPath = "";
     settings.destinationLabel = destination.options[destination.selectedIndex].text;
   }
-  await saveSettings();
+  await saveDestination();
 });
 
 settingsToggle.addEventListener("click", () => {
   setSettingsOpen(settingsPanel.hidden);
 });
 
-checkUpdate.addEventListener("click", installAvailableUpdate);
+checkUpdate.addEventListener("click", () => {
+  if (!availableUpdate) updateCreatorBridge();
+  return installAvailableUpdate();
+});
+installBridgeUpdate.addEventListener("click", () => updateCreatorBridge(true));
 
 rescan.addEventListener("click", scan);
 

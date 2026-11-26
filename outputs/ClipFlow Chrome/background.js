@@ -1,4 +1,6 @@
 const NATIVE_HOST = "fr.tubesave.chrome";
+const browserApi = globalThis.browser ?? globalThis.chrome;
+const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const SETTINGS_VERSION = 7;
 const QUALITY_KEYS = new Set(["best", "audio", "1080", "720", "480"]);
 const DESTINATION_KEYS = new Set(["downloads", "movies", "desktop", "custom", "premiere"]);
@@ -31,7 +33,7 @@ function activeJobKey(tabId) {
 
 async function rememberActiveJob(tabId, response, language = "fr") {
   if (!Number.isInteger(tabId) || tabId < 0 || typeof response?.jobId !== "string") return;
-  await chrome.storage.session.set({
+  await browserApi.storage.session.set({
     [activeJobKey(tabId)]: {
       jobId: response.jobId,
       destinationLabel: response.destinationLabel || "Téléchargements",
@@ -51,8 +53,8 @@ async function updateJobBadge(tabId, response) {
     : response.state === "error" || response.state === "cancelled"
       ? "!"
       : `${Math.max(1, Math.min(99, Number(response.progress) || 1))}%`;
-  await chrome.action.setBadgeText({ tabId, text: badgeText });
-  await chrome.action.setBadgeBackgroundColor({
+  await browserApi.action.setBadgeText({ tabId, text: badgeText });
+  await browserApi.action.setBadgeBackgroundColor({
     tabId,
     color: response.state === "complete" ? "#248a3d" : response.state === "error" ? "#d70015" : "#0a84ff",
   });
@@ -75,9 +77,9 @@ function monitorActiveJob(tabId, jobId, language = "fr") {
     try {
       const response = await sendNativeMessage({ action: "status", jobId, language: interfaceLanguage(language) });
       const key = activeJobKey(tabId);
-      const stored = await chrome.storage.session.get(key);
+      const stored = await browserApi.storage.session.get(key);
       if (stored[key]?.jobId === jobId) {
-        await chrome.storage.session.set({
+        await browserApi.storage.session.set({
           [key]: {
             ...stored[key],
             state: response.state,
@@ -104,7 +106,7 @@ function monitorActiveJob(tabId, jobId, language = "fr") {
 }
 
 async function resumeActiveJobMonitors() {
-  const stored = await chrome.storage.session.get(null);
+  const stored = await browserApi.storage.session.get(null);
   Object.entries(stored).forEach(([key, job]) => {
     if (!key.startsWith(ACTIVE_JOB_PREFIX) || typeof job?.jobId !== "string") return;
     if (["complete", "error", "cancelled"].includes(job.state)) return;
@@ -114,7 +116,7 @@ async function resumeActiveJobMonitors() {
 }
 
 function setTf1Status(tabId, state, message) {
-  return chrome.storage.session.set({
+  return browserApi.storage.session.set({
     [tf1StatusKey(tabId)]: { state, message, updatedAt: Date.now() },
   });
 }
@@ -209,11 +211,11 @@ function storeNetworkMedia(tabId, item) {
   const key = networkMediaKey(tabId);
   const storedItem = { ...item, detectedAt: Date.now() };
   networkMediaWrites = networkMediaWrites.then(async () => {
-    const stored = await chrome.storage.session.get(key);
+    const stored = await browserApi.storage.session.get(key);
     const current = Array.isArray(stored[key]) ? stored[key] : [];
     const recent = current.filter((entry) => Date.now() - Number(entry.detectedAt || 0) < NETWORK_MEDIA_TTL);
     const withoutDuplicate = recent.filter((entry) => entry.url !== storedItem.url);
-    await chrome.storage.session.set({ [key]: [...withoutDuplicate, storedItem].slice(-20) });
+    await browserApi.storage.session.set({ [key]: [...withoutDuplicate, storedItem].slice(-20) });
   }).catch(() => {});
   return networkMediaWrites;
 }
@@ -249,7 +251,7 @@ async function requestTf1HlsVariant(details) {
   const authorization = requestHeader(details.requestHeaders, "authorization");
   if (!authorization) {
     const pendingKey = tf1PendingKey(details.tabId);
-    const stored = await chrome.storage.session.get(pendingKey);
+    const stored = await browserApi.storage.session.get(pendingKey);
     if (stored[pendingKey]) {
       await setTf1Status(details.tabId, "error", "La session TF1 n’a pas fourni l’autorisation du flux HLS.");
     }
@@ -317,13 +319,13 @@ async function requestTf1HlsVariant(details) {
     );
 
     const pendingKey = tf1PendingKey(details.tabId);
-    const stored = await chrome.storage.session.get(pendingKey);
+    const stored = await browserApi.storage.session.get(pendingKey);
     const pending = stored[pendingKey];
     if (pending && Number(pending.expiresAt) > Date.now() && pending.nativeRequest) {
-      await chrome.storage.session.remove(pendingKey);
+      await browserApi.storage.session.remove(pendingKey);
       if (manifestDrm === true) {
-        await chrome.action.setBadgeText({ tabId: details.tabId, text: "DRM" });
-        await chrome.action.setBadgeBackgroundColor({ tabId: details.tabId, color: "#7a2e0b" });
+        await browserApi.action.setBadgeText({ tabId: details.tabId, text: "DRM" });
+        await browserApi.action.setBadgeBackgroundColor({ tabId: details.tabId, color: "#7a2e0b" });
         return;
       }
       const response = await sendNativeMessage({
@@ -337,37 +339,37 @@ async function requestTf1HlsVariant(details) {
         "sent",
         pending.nativeRequest.language === "en" ? "Download sent to ClipFlow." : "Téléchargement envoyé à ClipFlow.",
       );
-      await chrome.action.setBadgeText({ tabId: details.tabId, text: "✓" });
-      await chrome.action.setBadgeBackgroundColor({ tabId: details.tabId, color: "#16803a" });
+      await browserApi.action.setBadgeText({ tabId: details.tabId, text: "✓" });
+      await browserApi.action.setBadgeBackgroundColor({ tabId: details.tabId, color: "#16803a" });
     }
   } catch (error) {
     await setTf1Status(details.tabId, "error", error.message || "Flux HLS TF1 indisponible.");
-    await chrome.action.setBadgeText({ tabId: details.tabId, text: "!" });
-    await chrome.action.setBadgeBackgroundColor({ tabId: details.tabId, color: "#b42318" });
+    await browserApi.action.setBadgeText({ tabId: details.tabId, text: "!" });
+    await browserApi.action.setBadgeBackgroundColor({ tabId: details.tabId, color: "#b42318" });
   } finally {
     tf1HlsRequests.delete(requestKey);
   }
 }
 
-chrome.webRequest.onBeforeSendHeaders.addListener(
+browserApi.webRequest.onBeforeSendHeaders.addListener(
   requestTf1HlsVariant,
   { urls: ["https://mediainfo.tf1.fr/mediainfocombo/*"], types: ["xmlhttprequest"] },
-  ["requestHeaders", "extraHeaders"],
+  isFirefox ? ["requestHeaders"] : ["requestHeaders", "extraHeaders"],
 );
 
-chrome.webRequest.onHeadersReceived.addListener(
+browserApi.webRequest.onHeadersReceived.addListener(
   rememberNetworkMedia,
   { urls: ["https://*.tf1.fr/*"], types: ["media", "xmlhttprequest", "other"] },
   ["responseHeaders"],
 );
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === "loading") chrome.storage.session.remove(networkMediaKey(tabId));
+browserApi.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading") browserApi.storage.session.remove(networkMediaKey(tabId));
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => {
+browserApi.tabs.onRemoved.addListener((tabId) => {
   stopActiveJobMonitor(tabId);
-  chrome.storage.session.remove([networkMediaKey(tabId), tf1PendingKey(tabId), tf1StatusKey(tabId), activeJobKey(tabId)]);
+  browserApi.storage.session.remove([networkMediaKey(tabId), tf1PendingKey(tabId), tf1StatusKey(tabId), activeJobKey(tabId)]);
 });
 
 function normalizedWebUrl(rawUrl, errorMessage = "Adresse de vidéo invalide.") {
@@ -427,26 +429,22 @@ function backgroundText(language, key) {
   return messages[interfaceLanguage(language)][key];
 }
 
-function sendNativeMessage(message) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendNativeMessage(NATIVE_HOST, message, (response) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(backgroundText(message.language, "engineUnavailable")));
-        return;
-      }
-      if (!response || response.ok !== true) {
-        reject(new Error(response?.error || backgroundText(message.language, "refused")));
-        return;
-      }
-      resolve(response);
-    });
-  });
+async function sendNativeMessage(message) {
+  let response;
+  try {
+    response = await browserApi.runtime.sendNativeMessage(NATIVE_HOST, message);
+  } catch {
+    throw new Error(backgroundText(message.language, "engineUnavailable"));
+  }
+  if (response?.ok !== true) {
+    throw new Error(response?.error || backgroundText(message.language, "refused"));
+  }
+  return response;
 }
 
 async function handleMessage(message, sender) {
   const language = interfaceLanguage(message?.language);
-  if (sender.id !== chrome.runtime.id || !message || typeof message !== "object") {
+  if (sender.id !== browserApi.runtime.id || !message || typeof message !== "object") {
     throw new Error(backgroundText(language, "requestRefused"));
   }
 
@@ -456,7 +454,7 @@ async function handleMessage(message, sender) {
     await networkMediaWrites;
     const key = networkMediaKey(tabId);
     const statusKey = tf1StatusKey(tabId);
-    const stored = await chrome.storage.session.get([key, statusKey]);
+    const stored = await browserApi.storage.session.get([key, statusKey]);
     const media = (Array.isArray(stored[key]) ? stored[key] : [])
       .filter((entry) => Date.now() - Number(entry.detectedAt || 0) < NETWORK_MEDIA_TTL);
     return { ok: true, media, tf1Status: stored[statusKey] || null };
@@ -467,6 +465,15 @@ async function handleMessage(message, sender) {
   if (message.type === "check_update") {
     return sendNativeMessage({ action: "check_update", language });
   }
+  if (["sync_bridge_destination", "check_bridge_update", "install_bridge_update"].includes(message.type)) {
+    const { tubeSaveSettings } = await browserApi.storage.local.get("tubeSaveSettings");
+    const browser = isFirefox ? "firefox" : "chrome";
+    if (message.type === "sync_bridge_destination") {
+      return sendNativeMessage({ action: message.type, destination: tubeSaveSettings?.destination, browser, language });
+    }
+    if (tubeSaveSettings?.destination !== "premiere") return { ok: true };
+    return sendNativeMessage({ action: message.type, version: message.version, browser, language });
+  }
   if (message.type === "install_update") {
     return sendNativeMessage({
       action: "install_update",
@@ -474,6 +481,7 @@ async function handleMessage(message, sender) {
       releaseTag: typeof message.releaseTag === "string" ? message.releaseTag.slice(0, 32) : "",
       archiveAssetId: Number(message.archiveAssetId),
       checksumAssetId: Number(message.checksumAssetId),
+      browser: isFirefox ? "firefox" : "chrome",
       language,
     });
   }
@@ -481,10 +489,10 @@ async function handleMessage(message, sender) {
     const tabId = Number(message.tabId);
     if (!Number.isInteger(tabId) || tabId < 0) throw new Error(backgroundText(language, "invalidTab"));
     const key = activeJobKey(tabId);
-    const stored = await chrome.storage.session.get(key);
+    const stored = await browserApi.storage.session.get(key);
     const job = stored[key] || null;
     if (job && Number(job.updatedAt || 0) < Date.now() - 24 * 60 * 60 * 1000) {
-      await chrome.storage.session.remove(key);
+      await browserApi.storage.session.remove(key);
       return { ok: true, job: null };
     }
     return { ok: true, job };
@@ -494,9 +502,9 @@ async function handleMessage(message, sender) {
     if (!Number.isInteger(tabId) || tabId < 0) throw new Error(backgroundText(language, "invalidTab"));
     const response = await sendNativeMessage({ action: "status", jobId: message.jobId, language });
     const key = activeJobKey(tabId);
-    const stored = await chrome.storage.session.get(key);
+    const stored = await browserApi.storage.session.get(key);
     if (stored[key]) {
-      await chrome.storage.session.set({
+      await browserApi.storage.session.set({
         [key]: {
           ...stored[key],
           state: response.state,
@@ -534,6 +542,7 @@ async function handleMessage(message, sender) {
 
   const nativeRequest = {
     action: "download",
+    browser: isFirefox ? "firefox" : "chrome",
     url,
     quality,
     completionSound: message.completionSound !== false,
@@ -551,7 +560,7 @@ async function handleMessage(message, sender) {
   const isTf1Page = refererUrl && /(^|\.)tf1\.fr$/i.test(refererUrl.hostname);
   const isTf1Dash = isTf1Page && /(?:\.mpd(?:$|[?#])|vod-das\.|\.ism\/)/i.test(url);
   if (isTf1Dash && Number.isInteger(tabId) && tabId >= 0) {
-    await chrome.storage.session.set({
+    await browserApi.storage.session.set({
       [tf1PendingKey(tabId)]: {
         nativeRequest,
         pageUrl: referer,
@@ -563,9 +572,9 @@ async function handleMessage(message, sender) {
       "reloading",
       language === "en" ? "Automatically reloading to obtain the TF1 HLS stream…" : "Recharge automatique pour obtenir le flux HLS TF1…",
     );
-    await chrome.action.setBadgeText({ tabId, text: "…" });
-    await chrome.action.setBadgeBackgroundColor({ tabId, color: "#1367d1" });
-    await chrome.tabs.reload(tabId);
+    await browserApi.action.setBadgeText({ tabId, text: "…" });
+    await browserApi.action.setBadgeBackgroundColor({ tabId, color: "#1367d1" });
+    await browserApi.tabs.reload(tabId);
     return {
       ok: true,
       preparing: true,
@@ -577,7 +586,7 @@ async function handleMessage(message, sender) {
   return response;
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+browserApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleMessage(message, sender)
     .then((response) => sendResponse(response))
     .catch((error) => sendResponse({ ok: false, error: error.message }));

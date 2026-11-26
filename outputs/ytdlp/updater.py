@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import hmac
 import json
@@ -26,10 +27,11 @@ import certifi
 GITHUB_OWNER = "Coraubanne"
 GITHUB_REPOSITORY = "clipflow"
 CURRENT_RELEASE = 75
-CURRENT_VERSION = "2.14.0"
+CURRENT_VERSION = "2.16.1"
 APP_BUNDLE_ID = "fr.clipflow.app"
 EXTENSION_ID = "emfjpphkcgnjldilcnieaoppmfpfkhfg"
 PREMIERE_PLUGIN_ID = "fr.clipflow.premiere.bridge"
+PREMIERE_INSTALL_DIRECTORY = "Library/Application Support/Adobe/UXP/Plugins/External"
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_ARCHIVE_FILES = 30_000
@@ -369,9 +371,14 @@ def chrome_extension_paths(home: Path | None = None) -> list[Path]:
 
 def premiere_plugin_installations(home: Path | None = None) -> list[tuple[tuple[int, int, int], Path]]:
     """Return only validated Creator Bridge/legacy ClipFlow bridge installations."""
-    root = (home or Path.home()).resolve() / "Library/Application Support/Adobe/UXP/Plugins/External"
+    root = (home or Path.home()).resolve() / PREMIERE_INSTALL_DIRECTORY
     found: list[tuple[tuple[int, int, int], Path]] = []
     for path in root.glob(f"{PREMIERE_PLUGIN_ID}_*"):
+        if path.is_symlink() or any(
+            not (path / name).is_file() or (path / name).is_symlink()
+            for name in ("manifest.json", "index.html", "index.js", "styles.css")
+        ):
+            continue
         try:
             manifest = _read_json(path / "manifest.json")
             if manifest.get("id") != PREMIERE_PLUGIN_ID:
@@ -380,6 +387,33 @@ def premiere_plugin_installations(home: Path | None = None) -> list[tuple[tuple[
         except (OSError, UpdateError):
             continue
     return found
+
+
+def cleanup_premiere_duplicates(user_home: Path) -> int:
+    root = user_home / PREMIERE_INSTALL_DIRECTORY
+    if not root.is_dir() or root.is_symlink():
+        return 0
+    removed = 0
+    try:
+        descriptor = os.open(root / ".creator-bridge.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.lockf(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            premiere = premiere_plugin_installations(user_home)
+            if premiere:
+                _, keep = max(premiere, key=lambda item: (item[0], item[1].name))
+                for _, path in premiere:
+                    if path == keep:
+                        continue
+                    try:
+                        shutil.rmtree(path)
+                        removed += 1
+                    except OSError:
+                        pass
+        finally:
+            os.close(descriptor)
+    except OSError:
+        pass
+    return removed
 
 
 def clipflow_application_installations(
@@ -468,19 +502,7 @@ def cleanup_installed_duplicates(
                 except OSError:
                     pass
 
-    premiere = premiere_plugin_installations(user_home)
-    if premiere:
-        newest_premiere = max(version for version, _path in premiere)
-        newest_paths = [path for version, path in premiere if version == newest_premiere]
-        keep_premiere = newest_paths[0].resolve()
-        for version, path in premiere:
-            if version > newest_premiere or path.resolve() == keep_premiere:
-                continue
-            try:
-                shutil.rmtree(path)
-                removed["premiere"] += 1
-            except OSError:
-                pass
+    removed["premiere"] = cleanup_premiere_duplicates(user_home)
 
     active_extensions = {path.resolve() for path in chrome_extension_paths(user_home)}
     managed_extensions = managed_extension_installations(user_home)
@@ -547,6 +569,8 @@ def install_release(
     checksum_asset_id: int,
     current_app: Path,
     home: Path | None = None,
+    *,
+    allow_without_chrome: bool = False,
 ) -> dict[str, object]:
     tag = normalized_release_tag(f"v{release}" if isinstance(release, int) else release)
     if not release_is_newer(tag):
@@ -575,7 +599,7 @@ def install_release(
         components = validate_bundle(root, expected_identity)
 
         extension_targets = chrome_extension_paths(user_home)
-        if not extension_targets:
+        if not extension_targets and not allow_without_chrome:
             raise UpdateError("L’extension Chrome ClipFlow installée est introuvable.")
         app_target = current_app.resolve()
         if (
@@ -584,23 +608,10 @@ def install_release(
             or not os.access(app_target, os.W_OK)
         ):
             raise UpdateError("L’application ClipFlow installée ne peut pas être mise à jour.")
-        premiere_version = str(_read_json(components["premiere"] / "manifest.json").get("version", ""))
-        bundled_premiere_version = parse_semantic_version(premiere_version)
-        installed_premiere = premiere_plugin_installations(user_home)
-        newer_premiere_installed = any(
-            version > bundled_premiere_version for version, _path in installed_premiere
-        )
-        premiere_target = (
-            user_home / "Library/Application Support/Adobe/UXP/Plugins/External"
-            / f"{PREMIERE_PLUGIN_ID}_{premiere_version}"
-        )
-
         replacements: list[tuple[Path, Path | None]] = []
         try:
             for target in extension_targets:
                 replacements.append((target, _atomic_replace(components["extension"], target)))
-            if not newer_premiere_installed:
-                replacements.append((premiere_target, _atomic_replace(components["premiere"], premiere_target)))
             # Contents can be replaced atomically even when /Applications itself
             # is not writable. The already-running native host keeps its open image.
             app_contents = app_target / "Contents"
@@ -626,7 +637,11 @@ def install_release(
             )
             if verification.returncode != 0:
                 raise UpdateError("La nouvelle application n’a pas passé la vérification finale.")
-            cleanup_installed_duplicates(app_target, user_home)
+            helper = app_target / "Contents/Resources/ytdlp/creator-bridge-update.sh"
+            subprocess.run(
+                ["/bin/zsh", str(helper), "install-local", str(components["premiere"]), str(user_home)],
+                capture_output=True, timeout=30, check=True,
+            )
         except Exception as error:
             for target, backup in reversed(replacements):
                 try:
@@ -642,6 +657,7 @@ def install_release(
         for _target, backup in replacements:
             if backup and backup.exists():
                 shutil.rmtree(backup, ignore_errors=True)
+        cleanup_installed_duplicates(app_target, user_home)
 
     return {
         "ok": True,

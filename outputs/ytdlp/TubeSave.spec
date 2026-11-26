@@ -7,6 +7,7 @@ project = Path(SPECPATH)
 datas = [
     (str(project / "assets" / "ClipFlow.png"), "assets"),
     (str(project / "native_host"), "ytdlp"),
+    (str(project / "creator-bridge-update.sh"), "ytdlp"),
 ]
 binaries = []
 hiddenimports = []
@@ -86,12 +87,12 @@ app = BUNDLE(
     name="ClipFlow.app",
     icon=str(project / "assets" / "ClipFlow.png"),
     bundle_identifier="fr.clipflow.app",
-    version="2.14.0",
+    version="2.16.1",
     info_plist={
         "CFBundleDisplayName": "ClipFlow",
         "CFBundleName": "ClipFlow",
-        "CFBundleShortVersionString": "2.14.0",
-        "CFBundleVersion": "62",
+        "CFBundleShortVersionString": "2.16.1",
+        "CFBundleVersion": "65",
         "CFBundleDevelopmentRegion": "fr",
         "LSApplicationCategoryType": "public.app-category.utilities",
         "LSUIElement": True,

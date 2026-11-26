@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from native_host import (
     active_premiere_project,
+    handle_message,
     is_public_web_url,
     is_supported_video_request_url,
     launch_app_for_job,
@@ -43,6 +44,7 @@ class NativeHostTests(unittest.TestCase):
                     "url": "https://cdn.example.com/movie/master.m3u8",
                     "referer": "https://example.com/watch/42",
                     "sourceTitle": "  Film   de démonstration  ",
+                    "browser": "firefox",
                     "quality": "best",
                     "destination": "downloads",
                 },
@@ -51,6 +53,7 @@ class NativeHostTests(unittest.TestCase):
         self.assertEqual(job["url"], "https://cdn.example.com/movie/master.m3u8")
         self.assertEqual(job["referer"], "https://example.com/watch/42")
         self.assertEqual(job["sourceTitle"], "Film de démonstration")
+        self.assertEqual(job["browser"], "firefox")
 
     def test_custom_destination_must_exist(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -162,6 +165,23 @@ class NativeHostTests(unittest.TestCase):
         output.seek(0)
         size = struct.unpack("@I", output.read(4))[0]
         self.assertEqual(json.loads(output.read(size)), {"ok": True, "label": "Vidéos"})
+
+    @patch("native_host.subprocess.run")
+    def test_bridge_updates_require_premiere_for_the_requesting_browser(self, run):
+        run.return_value.stdout = '{"ok": true, "available": true}'
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("native_host.inbox_directory", return_value=Path(directory) / "inbox"):
+                check = {"action": "check_bridge_update", "browser": "firefox"}
+                self.assertFalse(handle_message(check)["available"])
+                handle_message({"action": "sync_bridge_destination", "browser": "chrome", "destination": "premiere"})
+                self.assertFalse(handle_message(check)["available"])
+                run.assert_not_called()
+                handle_message({"action": "sync_bridge_destination", "browser": "firefox", "destination": "premiere"})
+                self.assertTrue(handle_message(check)["available"])
+                self.assertEqual(Path(run.call_args.args[0][-1]).name, "bridge-destination-firefox.json")
+                handle_message({"action": "sync_bridge_destination", "browser": "firefox", "destination": "downloads"})
+                self.assertFalse(handle_message({**check, "action": "install_bridge_update"})["available"])
+                run.assert_called_once()
 
     @patch("native_host.subprocess.run")
     def test_stale_app_is_recovered_with_a_fresh_instance(self, run):

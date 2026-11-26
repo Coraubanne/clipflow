@@ -5,21 +5,18 @@ resource_dir="${0:A:h:h}/Resources"
 payload_dir="${resource_dir}/Payload"
 source_app="${payload_dir}/ClipFlow.app"
 source_extension="${payload_dir}/ClipFlow Chrome"
+source_firefox="${payload_dir}/ClipFlow-Firefox-unsigned.xpi"
 source_premiere="${payload_dir}/Creator Bridge"
 target_app="/Applications/ClipFlow.app"
 extension_root="${HOME}/Documents/ClipFlow"
 target_extension="${extension_root}/ClipFlow Chrome"
-premiere_version="$(/usr/bin/sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${source_premiere}/manifest.json" | /usr/bin/head -n 1)"
-target_premiere="${HOME}/Library/Application Support/Adobe/UXP/Plugins/External/fr.clipflow.premiere.bridge_${premiere_version}"
-native_manifest_dir="${HOME}/Library/Application Support/Google/Chrome/NativeMessagingHosts"
-native_manifest="${native_manifest_dir}/fr.tubesave.chrome.json"
 backup_app="/Applications/.ClipFlow.backup.$$"
 
 show_error() {
   /usr/bin/osascript -e 'display alert "Installation impossible" message "ClipFlow n’a pas pu être installé. Vérifiez que ce programme se trouve toujours dans son image disque, puis réessayez." as critical buttons {"OK"} default button "OK"' >/dev/null
 }
 
-for required in "${source_app}" "${source_extension}" "${source_premiere}"; do
+for required in "${source_app}" "${source_extension}" "${source_firefox}" "${source_premiere}"; do
   if [[ ! -e "${required}" ]]; then
     show_error
     exit 1
@@ -49,56 +46,29 @@ fi
 /bin/mkdir -p "${extension_root}"
 /bin/rm -rf "${target_extension}"
 /usr/bin/ditto "${source_extension}" "${target_extension}"
+/usr/bin/install -m 644 "${source_firefox}" "${extension_root}/ClipFlow-Firefox-unsigned.xpi"
 
-/bin/mkdir -p "${target_premiere:h}"
-version_code() {
-  local -a pieces
-  pieces=( ${(s:.:)1} )
-  print $(( ${pieces[1]:-0} * 1000000 + ${pieces[2]:-0} * 1000 + ${pieces[3]:-0} ))
-}
-newest_bridge_code=0
-for installed_bridge in "${target_premiere:h}"/fr.clipflow.premiere.bridge_*; do
-  [[ -d "${installed_bridge}" ]] || continue
-  installed_id="$(/usr/bin/sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${installed_bridge}/manifest.json" | /usr/bin/head -n 1)"
-  [[ "${installed_id}" == "fr.clipflow.premiere.bridge" ]] || continue
-  installed_version="$(/usr/bin/sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${installed_bridge}/manifest.json" | /usr/bin/head -n 1)"
-  installed_code="$(version_code "${installed_version}")"
-  (( installed_code > newest_bridge_code )) && newest_bridge_code=${installed_code}
-done
-source_bridge_code="$(version_code "${premiere_version}")"
-if (( newest_bridge_code <= source_bridge_code )); then
-  /bin/rm -rf "${target_premiere}"
-  /usr/bin/ditto "${source_premiere}" "${target_premiere}"
-  for old_bridge in "${target_premiere:h}"/fr.clipflow.premiere.bridge_*; do
-    [[ -d "${old_bridge}" && "${old_bridge}" != "${target_premiere}" ]] || continue
-    old_id="$(/usr/bin/sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${old_bridge}/manifest.json" | /usr/bin/head -n 1)"
-    [[ "${old_id}" == "fr.clipflow.premiere.bridge" ]] && /bin/rm -rf "${old_bridge}"
-  done
+/bin/zsh "${target_app}/Contents/Resources/ytdlp/creator-bridge-update.sh" install-local "${source_premiere}" >/dev/null
+
+if ! "${target_app}/Contents/MacOS/ClipFlow" --clipflow-register-browser-hosts; then
+  show_error
+  exit 1
 fi
-
-/bin/mkdir -p "${native_manifest_dir}"
-/usr/bin/printf '%s\n' \
-  '{' \
-  '  "name": "fr.tubesave.chrome",' \
-  '  "description": "Liaison locale entre Chrome et ClipFlow",' \
-  '  "path": "/Applications/ClipFlow.app/Contents/Resources/ytdlp/native_host",' \
-  '  "type": "stdio",' \
-  '  "allowed_origins": [' \
-  '    "chrome-extension://emfjpphkcgnjldilcnieaoppmfpfkhfg/"' \
-  '  ]' \
-  '}' > "${native_manifest}"
 
 /usr/bin/open -g "${target_app}" >/dev/null 2>&1 || true
 
 choice="$(/usr/bin/osascript <<'APPLESCRIPT'
-display dialog "ClipFlow est installé.\n\nUne dernière étape dans Chrome : activez le mode développeur, cliquez sur « Charger l’extension non empaquetée », puis choisissez le dossier ClipFlow Chrome qui va s’afficher." buttons {"Plus tard", "Ouvrir Chrome"} default button "Ouvrir Chrome" with title "Installation terminée" with icon note
+display dialog "ClipFlow est installé.\n\nChrome : activez le mode développeur et chargez le dossier ClipFlow Chrome.\n\nFirefox : dans about:debugging, sélectionnez Ce Firefox puis chargez temporairement le fichier ClipFlow-Firefox-unsigned.xpi." buttons {"Plus tard", "Firefox", "Chrome"} default button "Chrome" with title "Installation terminée" with icon note
 button returned of result
 APPLESCRIPT
 )"
 
-if [[ "${choice}" == "Ouvrir Chrome" ]]; then
+if [[ "${choice}" == "Chrome" ]]; then
   /usr/bin/open -a "Google Chrome" "chrome://extensions" >/dev/null 2>&1 || true
   /usr/bin/open -R "${target_extension}" >/dev/null 2>&1 || true
+elif [[ "${choice}" == "Firefox" ]]; then
+  /usr/bin/open -a "Firefox" "about:debugging#/runtime/this-firefox" >/dev/null 2>&1 || true
+  /usr/bin/open -R "${extension_root}/ClipFlow-Firefox-unsigned.xpi" >/dev/null 2>&1 || true
 fi
 
 exit 0

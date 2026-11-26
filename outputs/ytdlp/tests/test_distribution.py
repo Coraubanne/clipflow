@@ -1,6 +1,11 @@
 import os
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+from zipfile import ZipFile
 
 
 class DistributionTests(unittest.TestCase):
@@ -29,7 +34,7 @@ class DistributionTests(unittest.TestCase):
         self.assertIn('source_app="${payload_dir}/ClipFlow.app"', source)
         self.assertIn('source_extension="${payload_dir}/ClipFlow Chrome"', source)
         self.assertIn('source_premiere="${payload_dir}/Creator Bridge"', source)
-        self.assertIn('fr.clipflow.premiere.bridge_*', source)
+        self.assertIn('creator-bridge-update.sh" install-local', source)
         self.assertIn('/Applications/ClipFlow.app', source)
         self.assertNotIn('/Applications/Utilities/Terminal.app', source)
         self.assertIn('Creator Bridge/.gitignore', builder)
@@ -39,6 +44,20 @@ class DistributionTests(unittest.TestCase):
             content = (self.root / name).read_text()
             self.assertIn("releases/latest/download/ClipFlow-Installer.dmg", content)
             self.assertIn("Download ZIP", content)
+
+    def test_firefox_uses_the_shared_sources_and_a_gecko_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "ClipFlow.xpi"
+            subprocess.run(
+                [sys.executable, self.root / "scripts/build_firefox_extension.py", target],
+                check=True,
+            )
+            with ZipFile(target) as archive:
+                manifest = json.loads(archive.read("manifest.json"))
+                self.assertNotIn("key", manifest)
+                self.assertEqual(manifest["background"], {"scripts": ["background.js"]})
+                self.assertEqual(manifest["browser_specific_settings"]["gecko"]["id"], "clipflow@coraubanne")
+                self.assertEqual(archive.read("popup.js"), (self.root / "outputs/ClipFlow Chrome/popup.js").read_bytes())
 
 
 if __name__ == "__main__":

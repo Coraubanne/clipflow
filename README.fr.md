@@ -67,13 +67,19 @@ ClipFlow cible actuellement les Mac Apple Silicon et est distribué hors du Mac 
 
 Après la première installation, utilisez **Réglages → Chercher une mise à jour**. Les releases publiques peuvent être vérifiées et installées sans compte GitHub.
 
+### Tester ClipFlow avec Firefox
+
+À partir de ClipFlow 2.16.0, l’installateur macOS enregistre aussi le compagnon dans Firefox et place `ClipFlow-Firefox-unsigned.xpi` dans `Documents/ClipFlow`. Dans Firefox 140 ou plus récent, ouvrez `about:debugging#/runtime/this-firefox`, choisissez **Charger un module complémentaire temporaire**, puis sélectionnez ce fichier. Cette installation expire au redémarrage de Firefox. Une installation durable exige un XPI signé par Mozilla. [Documentation Mozilla](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/)
+
+Les deux navigateurs utilisent le même compagnon macOS pour les téléchargements et les imports Premiere Pro. Firefox gère les mises à jour de l’extension elle-même. Le bouton des réglages vérifie le compagnon ClipFlow et vérifie aussi Creator Bridge lorsque **Premiere Pro** est la destination choisie.
+
 ## Compatibilité
 
 | Prérequis | Configuration prise en charge |
 | --- | --- |
 | Système | macOS 12 ou plus récent |
 | Processeur | Apple Silicon (ARM64) |
-| Navigateur | Google Chrome compatible Manifest V3 |
+| Navigateur | Google Chrome compatible Manifest V3 ou Firefox 140+ |
 | Intégration Premiere | Adobe Premiere Pro 25.6 ou plus récent |
 | Médias | Sources publiques ou autrement autorisées, sans DRM, prises en charge par yt-dlp ou exposées comme média web compatible |
 

@@ -49,6 +49,8 @@ class UpdaterTests(unittest.TestCase):
     @staticmethod
     def _write_premiere(path: Path, version: str) -> None:
         path.mkdir(parents=True)
+        for name in ("index.html", "index.js", "styles.css"):
+            (path / name).write_text("fixture", encoding="utf-8")
         (path / "manifest.json").write_text(
             json.dumps({"id": "fr.clipflow.premiere.bridge", "version": version}),
             encoding="utf-8",
@@ -128,9 +130,9 @@ class UpdaterTests(unittest.TestCase):
 
     def test_semantic_versions_are_strict_and_ordered(self):
         self.assertEqual(parse_semantic_version("2.9.1"), (2, 9, 1))
-        self.assertEqual(normalized_release_tag("v2.14.0"), "v2.14.0")
-        self.assertFalse(release_is_newer("v2.14.0"))
-        self.assertTrue(release_is_newer("v2.14.1"))
+        self.assertEqual(normalized_release_tag("v2.16.1"), "v2.16.1")
+        self.assertFalse(release_is_newer("v2.16.1"))
+        self.assertTrue(release_is_newer("v2.16.2"))
         self.assertTrue(release_is_newer("v3.0.0"))
         for value in ("2.9", "v2.09.1", "v2.9.1-beta", "../v2.9.2"):
             with self.assertRaises(UpdateError):
@@ -138,20 +140,20 @@ class UpdaterTests(unittest.TestCase):
 
     def test_latest_release_accepts_future_semantic_tag(self):
         payload = {
-            "tag_name": "v2.14.1",
-            "name": "ClipFlow 2.14.1",
+            "tag_name": "v2.16.2",
+            "name": "ClipFlow 2.16.2",
             "draft": False,
             "prerelease": False,
             "assets": [
-                {"id": 101, "name": "ClipFlow-complet-v2.14.1.zip"},
-                {"id": 102, "name": "ClipFlow-complet-v2.14.1.zip.sha256"},
+                {"id": 101, "name": "ClipFlow-complet-v2.16.2.zip"},
+                {"id": 102, "name": "ClipFlow-complet-v2.16.2.zip.sha256"},
             ],
         }
         with patch("updater._github_json", return_value=payload):
             result = latest_release(Path("/nonexistent"))
         self.assertTrue(result["available"])
-        self.assertEqual(result["releaseTag"], "v2.14.1")
-        self.assertEqual(result["latestVersion"], "2.14.1")
+        self.assertEqual(result["releaseTag"], "v2.16.2")
+        self.assertEqual(result["latestVersion"], "2.16.2")
         self.assertEqual(result["archiveAssetId"], 101)
 
     def test_github_token_is_read_without_exposing_configuration(self):
