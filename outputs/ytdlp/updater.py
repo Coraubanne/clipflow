@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import codecs
 import fcntl
 import hashlib
 import hmac
@@ -27,7 +28,7 @@ import certifi
 GITHUB_OWNER = "Coraubanne"
 GITHUB_REPOSITORY = "clipflow"
 CURRENT_RELEASE = 75
-CURRENT_VERSION = "2.16.1"
+CURRENT_VERSION = "2.16.2"
 APP_BUNDLE_ID = "fr.clipflow.app"
 EXTENSION_ID = "emfjpphkcgnjldilcnieaoppmfpfkhfg"
 PREMIERE_PLUGIN_ID = "fr.clipflow.premiere.bridge"
@@ -438,7 +439,7 @@ def clipflow_application_installations(
                 if info.get("CFBundleIdentifier") != APP_BUNDLE_ID:
                     continue
                 version = parse_semantic_version(info.get("CFBundleShortVersionString"))
-            except (OSError, ValueError, TypeError, UpdateError, plistlib.InvalidFileException):
+            except (OSError, LookupError, ValueError, TypeError, UpdateError, plistlib.InvalidFileException):
                 continue
             found.append((version, path))
     return found
@@ -609,6 +610,9 @@ def install_release(
         ):
             raise UpdateError("L’application ClipFlow installée ne peut pas être mise à jour.")
         replacements: list[tuple[Path, Path | None]] = []
+        # Binary Info.plist files may contain UTF-16 strings. Cache their codec
+        # while PyInstaller can still load resources from the running bundle.
+        codecs.lookup("utf-16be")
         try:
             for target in extension_targets:
                 replacements.append((target, _atomic_replace(components["extension"], target)))

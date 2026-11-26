@@ -2,6 +2,11 @@
 
 All notable user-facing changes are documented here.
 
+## 2.16.2 — 2026-11-26
+
+- Fixed an encoding error during automatic update on Macs with binary application metadata.
+- Kept unrelated application metadata from blocking ClipFlow duplicate cleanup.
+
 ## 2.16.1 — 2026-11-26
 
 - Added a Firefox extension backed by the same macOS companion used by Chrome.

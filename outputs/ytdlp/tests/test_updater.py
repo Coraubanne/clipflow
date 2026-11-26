@@ -11,6 +11,7 @@ from unittest.mock import patch
 from updater import (
     UpdateError,
     chrome_extension_paths,
+    clipflow_application_installations,
     cleanup_installed_duplicates,
     github_token,
     latest_release,
@@ -55,6 +56,23 @@ class UpdaterTests(unittest.TestCase):
             json.dumps({"id": "fr.clipflow.premiere.bridge", "version": version}),
             encoding="utf-8",
         )
+
+    def test_app_discovery_skips_metadata_with_an_unavailable_codec(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            active_app = root / "ClipFlow.app"
+            unrelated_app = root / "Unrelated.app"
+            self._write_app(active_app, "2.16.2")
+            self._write_app(unrelated_app, "1.0.0", "com.example.unrelated")
+            load = plistlib.load
+
+            def read_metadata(stream):
+                if Path(stream.name).parent.parent == unrelated_app:
+                    raise LookupError("unknown encoding: utf-16be")
+                return load(stream)
+
+            with patch("updater.plistlib.load", side_effect=read_metadata):
+                self.assertEqual(clipflow_application_installations(root, (root,)), [((2, 16, 2), active_app)])
 
     def test_duplicate_cleanup_keeps_only_verified_latest_components(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -130,9 +148,9 @@ class UpdaterTests(unittest.TestCase):
 
     def test_semantic_versions_are_strict_and_ordered(self):
         self.assertEqual(parse_semantic_version("2.9.1"), (2, 9, 1))
-        self.assertEqual(normalized_release_tag("v2.16.1"), "v2.16.1")
-        self.assertFalse(release_is_newer("v2.16.1"))
-        self.assertTrue(release_is_newer("v2.16.2"))
+        self.assertEqual(normalized_release_tag("v2.16.2"), "v2.16.2")
+        self.assertFalse(release_is_newer("v2.16.2"))
+        self.assertTrue(release_is_newer("v2.16.3"))
         self.assertTrue(release_is_newer("v3.0.0"))
         for value in ("2.9", "v2.09.1", "v2.9.1-beta", "../v2.9.2"):
             with self.assertRaises(UpdateError):
@@ -140,20 +158,20 @@ class UpdaterTests(unittest.TestCase):
 
     def test_latest_release_accepts_future_semantic_tag(self):
         payload = {
-            "tag_name": "v2.16.2",
-            "name": "ClipFlow 2.16.2",
+            "tag_name": "v2.16.3",
+            "name": "ClipFlow 2.16.3",
             "draft": False,
             "prerelease": False,
             "assets": [
-                {"id": 101, "name": "ClipFlow-complet-v2.16.2.zip"},
-                {"id": 102, "name": "ClipFlow-complet-v2.16.2.zip.sha256"},
+                {"id": 101, "name": "ClipFlow-complet-v2.16.3.zip"},
+                {"id": 102, "name": "ClipFlow-complet-v2.16.3.zip.sha256"},
             ],
         }
         with patch("updater._github_json", return_value=payload):
             result = latest_release(Path("/nonexistent"))
         self.assertTrue(result["available"])
-        self.assertEqual(result["releaseTag"], "v2.16.2")
-        self.assertEqual(result["latestVersion"], "2.16.2")
+        self.assertEqual(result["releaseTag"], "v2.16.3")
+        self.assertEqual(result["latestVersion"], "2.16.3")
         self.assertEqual(result["archiveAssetId"], 101)
 
     def test_github_token_is_read_without_exposing_configuration(self):
