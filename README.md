@@ -1,105 +1,57 @@
-<p align="center">
-  <img src="outputs/ytdlp/assets/ClipFlow.png" width="112" alt="ClipFlow icon">
-</p>
+# ClipFlow
 
-<h1 align="center">ClipFlow</h1>
+<img src="outputs/ytdlp/assets/ClipFlow.png" width="88" align="right" alt="ClipFlow icon">
 
-<p align="center">
-  Media acquisition for video editors, audiovisual researchers and documentary teams.
-</p>
+Collect web video for editing, archival research and documentary production. ClipFlow finds compatible media in your browser and saves it on your Mac. For Premiere Pro workflows, it can also import the finished file into your project.
 
-<p align="center">
-  <a href="https://github.com/Coraubanne/clipflow/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Coraubanne/clipflow?style=flat-square"></a>
-  <a href="https://github.com/Coraubanne/clipflow/actions/workflows/test.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/Coraubanne/clipflow/test.yml?branch=main&style=flat-square&label=tests"></a>
-  <img alt="macOS Apple Silicon" src="https://img.shields.io/badge/macOS-Apple%20Silicon-111111?style=flat-square&logo=apple">
-  <img alt="Chrome Manifest V3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?style=flat-square&logo=googlechrome&logoColor=white">
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square"></a>
-</p>
+**[Download ClipFlow for macOS](https://github.com/Coraubanne/clipflow/releases/latest/download/ClipFlow-Installer.dmg)** · [Release notes](https://github.com/Coraubanne/clipflow/releases/latest) · [Français](README.fr.md)
 
-<p align="center">
-  <strong>English</strong> · <a href="README.fr.md">Français</a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/Coraubanne/clipflow/releases/latest/download/ClipFlow-Installer.dmg"><img alt="Download ClipFlow for macOS" src="https://img.shields.io/badge/Download_ClipFlow_for_macOS-007AFF?style=for-the-badge&logo=apple&logoColor=white"></a>
-</p>
-
-> **For users:** download `ClipFlow-Installer.dmg` with the button above. Do not use GitHub’s **Code → Download ZIP** command: that archive contains the project’s source code and development files.
-
-ClipFlow turns web video discovery into a clean post-production workflow. Its Chrome extension identifies compatible media on the active page, its local macOS engine retrieves the best compatible source with [yt-dlp](https://github.com/yt-dlp/yt-dlp), and its optional Premiere Pro panel can place the finished file next to the active project and import it automatically.
-
-It is designed for video editors, audiovisual documentalists, archive researchers, journalists and production teams who need to collect media they are authorized to use without breaking their editorial flow.
-
-## Highlights
-
-- Detects compatible page videos, direct media, HLS/DASH streams and embedded players.
-- Shows a large thumbnail beside each detected video and locally captures the visible player when a site exposes only a generic image.
-- Selects the highest available MP4/H.264 quality, including 4K when a compatible source exists.
-- Names every finished file `Channel — Video title [identifier].mp4`, with the creator or website as a reliable fallback.
-- Preserves the original audio language whenever the source exposes it.
-- Labels the interface language separately from video audio and displays the installed extension version.
-- Offers an audio-only MP3 mode.
-- Keeps temporary fragments in a hidden workspace and exposes only completed files.
-- Runs as an invisible macOS background agent; Chrome is the main interface.
-- Offers an automatic, French or English interface from the extension settings.
-- Saves beside an active Premiere Pro project and requests automatic import through the optional UXP panel.
-- Checks GitHub Releases for updates, verifies SHA-256 integrity, then updates the app, extension and Premiere panel together.
-- Contains no telemetry or advertising.
-
-## Workflow
-
-| Stage | Component | Role |
-| --- | --- | --- |
-| Discover | Chrome extension | Inspects only the active tab after the user opens ClipFlow. |
-| Retrieve | macOS background app | Uses yt-dlp and FFmpeg to download, merge or convert compatible media. |
-| Organize | Local filesystem | Writes the final file to Downloads, a chosen folder or the Premiere project folder. |
-| Edit | Premiere Pro panel | Optionally imports the completed file into the active project. |
+Apple Silicon · macOS 12+ · Chrome or Firefox 140+
 
 ## Install
 
-ClipFlow currently targets Apple Silicon Macs and is distributed outside the Mac App Store and Chrome Web Store.
+1. Download `ClipFlow-Installer.dmg`, open it and run **Installer ClipFlow**. The installer adds the background app, the browser files and the Creator Bridge panel.
+2. Load ClipFlow in your browser.
 
-1. Download the single [`ClipFlow-Installer.dmg`](https://github.com/Coraubanne/clipflow/releases/latest/download/ClipFlow-Installer.dmg) file.
-2. Open the disk image and launch **Installer ClipFlow**. It installs the macOS app, places the Chrome extension in `Documents/ClipFlow` and installs the Premiere Pro panel.
-   If macOS blocks this first launch, Control-click **Installer ClipFlow**, choose **Open**, then confirm. A future notarized build will remove this extra step.
-3. When prompted, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the `ClipFlow Chrome` folder displayed by Finder. Chrome does not allow a public unpacked extension to silently activate itself.
-4. Pin ClipFlow to the Chrome toolbar. Open a page containing a video, start playback if necessary, then open ClipFlow and select **Download**.
+   | Browser | Setup |
+   | --- | --- |
+   | Google Chrome | Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked** and select `~/Documents/ClipFlow/ClipFlow Chrome`. |
+   | Firefox | Open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on** and select `~/Documents/ClipFlow/ClipFlow-Firefox-unsigned.xpi`. Load it again after quitting and reopening Firefox. |
 
-After the first installation, use **Settings → Check for updates** in the Chrome extension. Public releases can be checked and installed without a GitHub account.
+GitHub’s **Code → Download ZIP** option downloads the source code. Use the DMG for installation. The Firefox extension is currently distributed as an unsigned test build. [Mozilla’s temporary installation guide](https://extensionworkshop.com/documentation/develop/temporary-installation-in-firefox/)
 
-### Trying ClipFlow in Firefox
+## Download a video
 
-Starting with ClipFlow 2.16.0, the macOS installer also registers the Firefox native host and copies `ClipFlow-Firefox-unsigned.xpi` to `Documents/ClipFlow`. In Firefox 140 or newer, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select the XPI. The temporary add-on is removed when Firefox restarts. A permanent installation requires an XPI signed by Mozilla. [Mozilla's signing documentation](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/)
+1. Open the video’s page and start playback if ClipFlow needs to detect the stream.
+2. Open the ClipFlow toolbar popup, check the thumbnail and choose **Download**.
+3. Find the file in **Downloads** or change the destination from the settings. Use **Audio only** to save an MP3.
 
-Both browsers use the same macOS companion for downloads and Premiere Pro imports. Firefox manages the add-on's own updates. ClipFlow's settings check the macOS companion and also check Creator Bridge when Premiere Pro is selected as the destination.
+ClipFlow looks for the highest quality it can deliver as MP4, including 4K where a compatible stream is available. It prioritizes the original audio track when the source identifies it and asks before converting a detected WebM. Finished files use a name such as `Channel — Video title [identifier].mp4`.
 
-## Compatibility
+Site compatibility depends on the player and the media formats it exposes. Use ClipFlow for media you’re authorized to download. DRM-protected streams are unsupported. [Usage and legal notes](LEGAL.md)
 
-| Requirement | Supported configuration |
-| --- | --- |
-| Operating system | macOS 12 or later |
-| Processor | Apple Silicon (ARM64) |
-| Browser | Google Chrome with Manifest V3 support or Firefox 140+ |
-| Premiere integration | Adobe Premiere Pro 25.6 or later |
-| Media | Public or otherwise authorized, non-DRM sources supported by yt-dlp or exposed as compatible web media |
+## Send a file to Premiere Pro
 
-Site compatibility changes over time and depends partly on upstream extractors. A website being visible in a browser does not guarantee that its media can be downloaded.
+Open a saved project in **Premiere Pro 25.6 or later**, then open **Window → UXP Plug-ins → Creator Bridge**. Choose **Premiere Pro** as the ClipFlow destination before starting the download. ClipFlow saves the file next to the project and asks Creator Bridge to import it into the Project panel. [Creator Bridge](https://github.com/Coraubanne/CreatorBridge)
 
-## Privacy and security
+## Updates
 
-ClipFlow processes URLs and media locally. It does not operate an analytics service, upload browsing history or sell usage data. The extension uses active-tab access and a narrowly scoped TF1 network permission. Browser session access is used only when a compatible site requires authentication and ClipFlow has the relevant local authorization.
+Open **Settings → Check for updates** in ClipFlow. The companion verifies the GitHub archive’s SHA-256 checksum before installing. Selecting Premiere Pro as the destination also enables a separate Creator Bridge check. For Firefox, download the current XPI from the release page and load it as a temporary add-on. [Version history](CHANGELOG.md)
 
-Release archives are published with SHA-256 checksums. The updater rejects mismatched archives, unsafe ZIP paths, unexpected component identities and invalid application signatures. See [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+## Project and support
 
-## Responsible use
+- [Report a reproducible issue](https://github.com/Coraubanne/clipflow/issues) · [Contribution policy](CONTRIBUTING.md)
+- [Privacy](PRIVACY.md) · [Security reports](SECURITY.md)
+- [Publication and backups](GITHUB.md) · [Test workflow](https://github.com/Coraubanne/clipflow/actions/workflows/test.yml)
+- [MIT license](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-ClipFlow is a general-purpose media workflow tool. It does not decrypt or bypass DRM. Use it only for media you own, media in the public domain, media covered by an applicable licence or exception, or media you otherwise have permission to download. You remain responsible for copyright, privacy, contractual and platform-rule compliance in your jurisdiction.
+<details>
+<summary>Build and test</summary>
 
-ClipFlow is not affiliated with or endorsed by YouTube, Google, Adobe, TF1, Vimeo, Dailymotion or any other platform. Read [LEGAL.md](LEGAL.md) before use.
+The Firefox package is built from the shared browser source under `outputs/ClipFlow Chrome`. The macOS companion uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) and FFmpeg.
 
-## Development
-
-```bash
+```sh
+git submodule update --init
 cd outputs/ytdlp
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-lock.txt
@@ -107,14 +59,4 @@ PYTHONPATH=. .venv/bin/python -m unittest discover -s tests
 .venv/bin/pyinstaller --clean --noconfirm TubeSave.spec
 ```
 
-The repository contains the macOS engine, Chrome extension, Premiere UXP panel, tests and release tooling. External code contributions are not accepted; public issues remain available for reproducible bug reports. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-ClipFlow follows semantic versioning for user-facing releases. Version 2.9.1 is distributed through one final legacy bridge tag so installations on v68 can migrate without breaking automatic updates; later tags use the `vMAJOR.MINOR.PATCH` format directly.
-
-## Credits
-
-ClipFlow is built around [yt-dlp](https://github.com/yt-dlp/yt-dlp) and uses FFmpeg for compatible media processing. Third-party projects retain their own licences and trademarks; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-## License
-
-ClipFlow's original source code is available under the [MIT License](LICENSE). Bundled third-party components remain governed by their respective licences.
+</details>
