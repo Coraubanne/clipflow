@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.19.1";
+const EXPECTED_EXTENSION_VERSION = "2.19.2";
 const browserApi = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
@@ -133,7 +133,9 @@ let bridgeRequest = 0;
 const extensionVersion = document.getElementById("extension-version");
 let availableUpdate = null;
 let lastUpdateResponse = null;
-let pending4kProbe = Promise.resolve();
+const formatProbeSlots = Array.from({ length: 3 }, () => Promise.resolve());
+let nextFormatProbeSlot = 0;
+let scanRequest = 0;
 
 function activeLanguage() {
   if (settings.language === "fr" || settings.language === "en") return settings.language;
@@ -341,10 +343,10 @@ async function loadSettings() {
     destination.insertBefore(option, destination.querySelector('option[value="choose"]'));
   }
   destination.value = settings.destination;
-  await saveDestination();
+  void saveDestination().catch(() => {});
 }
 
-async function detectVideosOnPage(uiLanguage = "fr") {
+function detectVideosOnPage(uiLanguage = "fr") {
   const copy = uiLanguage === "en" ? {
     detectedVideo: "Detected video", youtubePlayer: "YouTube player", bestQuality: "best quality via yt-dlp",
     dailymotionPlayer: "Dailymotion player", htmlPlayer: "HTML5 player", video: "Video",
@@ -492,40 +494,6 @@ async function detectVideosOnPage(uiLanguage = "fr") {
     } catch (_error) {
       return "";
     }
-  }
-
-  async function inlineAmazonThumbnails(candidates) {
-    const targets = candidates.filter((candidate) => {
-      try {
-        return /(^|\.)media-amazon\./i.test(new URL(candidate.thumbnail).hostname);
-      } catch (_error) {
-        return false;
-      }
-    }).slice(0, 12);
-    await Promise.all(targets.map(async (candidate) => {
-      try {
-        const response = await fetch(candidate.thumbnail, {
-          cache: "force-cache",
-          credentials: "omit",
-          referrerPolicy: "no-referrer",
-        });
-        if (!response.ok) return;
-        const blob = await response.blob();
-        if (!blob.type.startsWith("image/") || blob.size > 180_000) return;
-        const encoded = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-          reader.onerror = () => resolve("");
-          reader.readAsDataURL(blob);
-        });
-        if (/^data:image\//i.test(encoded) && encoded.length <= 250_000) {
-          candidate.thumbnail = encoded;
-          candidate.thumbnailScore = 100;
-        }
-      } catch (_error) {
-        // L’URL distante reste utilisable si Amazon refuse exceptionnellement la copie locale.
-      }
-    }));
   }
 
   function add(rawUrl, label, detail, options = {}) {
@@ -831,7 +799,6 @@ async function detectVideosOnPage(uiLanguage = "fr") {
   });
 
   found.sort((left, right) => right.priority - left.priority || left.label.localeCompare(right.label));
-  await inlineAmazonThumbnails(found);
   return { pageUrl, pageTitle: title, drmDetected, durationSeconds, videos: found.slice(0, 30) };
 }
 
@@ -1082,17 +1049,90 @@ function croppedVisibleThumbnail(screenshotUrl, rect) {
   });
 }
 
-async function enrichWeakThumbnails(tab, selectedVideos) {
-  const targets = selectedVideos.filter((video) => video.thumbnailRect && Number(video.thumbnailScore || 0) < 70);
+function setCardThumbnail(card, url) {
+  card.classList.toggle("without-thumbnail", !url);
+  if (!url) return;
+  let thumbnail = card.querySelector(".video-thumbnail");
+  if (!thumbnail) {
+    thumbnail = document.createElement("img");
+    thumbnail.className = "video-thumbnail";
+    thumbnail.alt = "";
+    thumbnail.loading = "eager";
+    thumbnail.referrerPolicy = "no-referrer";
+    thumbnail.addEventListener("error", () => {
+      thumbnail.remove();
+      card.classList.add("without-thumbnail");
+    });
+    card.prepend(thumbnail);
+  }
+  thumbnail.src = url;
+}
+
+function updateVideoThumbnail(page, index, thumbnail, score) {
+  if (page !== activePage || !thumbnail) return;
+  const video = page.videos[index];
+  if ((video.thumbnailScore || 0) >= score) return;
+  video.thumbnail = thumbnail;
+  video.thumbnailScore = score;
+  for (const card of videos.querySelectorAll(`[data-index="${index}"]`)) {
+    setCardThumbnail(card, thumbnail);
+  }
+}
+
+async function enrichWeakThumbnails(tab, page) {
+  const targets = page.videos
+    .map((video, index) => ({ video, index }))
+    .filter(({ video }) => video.thumbnailRect && (video.thumbnailScore || 0) < 70);
   if (!targets.length) return;
   const screenshot = await capturedTabImage(tab.windowId);
-  if (!screenshot) return;
-  await Promise.all(targets.map(async (video) => {
+  if (!screenshot || page !== activePage) return;
+  await Promise.all(targets.map(async ({ video, index }) => {
     const thumbnail = await croppedVisibleThumbnail(screenshot, video.thumbnailRect);
-    if (thumbnail) {
-      video.thumbnail = thumbnail;
-      video.thumbnailScore = 95;
+    updateVideoThumbnail(page, index, thumbnail, 95);
+  }));
+}
+
+async function inlineAmazonThumbnails(urls) {
+  return Promise.all(urls.map(async (url) => {
+    try {
+      const response = await fetch(url, {
+        cache: "force-cache",
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
+      });
+      if (!response.ok) return "";
+      const blob = await response.blob();
+      if (!blob.type.startsWith("image/") || blob.size > 180_000) return "";
+      const encoded = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+        reader.onerror = () => resolve("");
+        reader.readAsDataURL(blob);
+      });
+      return /^data:image\//i.test(encoded) && encoded.length <= 250_000 ? encoded : "";
+    } catch (_error) {
+      return "";
     }
+  }));
+}
+
+async function enrichAmazonThumbnails(tab, page) {
+  const frames = new Map();
+  page.videos.forEach((video, index) => {
+    if (!Number.isInteger(video.thumbnailFrameId) || !video.thumbnail) return;
+    if (!/(^|\.)media-amazon\./i.test(new URL(video.thumbnail).hostname)) return;
+    if (!frames.has(video.thumbnailFrameId)) frames.set(video.thumbnailFrameId, []);
+    frames.get(video.thumbnailFrameId).push({ url: video.thumbnail, index });
+  });
+  await Promise.allSettled(Array.from(frames, async ([frameId, targets]) => {
+    const [injection] = await browserApi.scripting.executeScript({
+      target: { tabId: tab.id, frameIds: [frameId] },
+      func: inlineAmazonThumbnails,
+      args: [targets.map(({ url }) => url)],
+    });
+    targets.forEach(({ index }, position) => {
+      updateVideoThumbnail(page, index, injection?.result?.[position], 100);
+    });
   }));
 }
 
@@ -1108,21 +1148,7 @@ function createVideoCard(video, index, initialQuality = "best") {
   const card = document.createElement("article");
   card.className = "video-card";
   card.dataset.quality = initialQuality;
-  let thumbnail = null;
-  if (video.thumbnail) {
-    thumbnail = document.createElement("img");
-    thumbnail.className = "video-thumbnail";
-    thumbnail.src = video.thumbnail;
-    thumbnail.alt = "";
-    thumbnail.loading = "eager";
-    thumbnail.referrerPolicy = "no-referrer";
-    thumbnail.addEventListener("error", () => {
-      thumbnail.remove();
-      card.classList.add("without-thumbnail");
-    });
-  } else {
-    card.classList.add("without-thumbnail");
-  }
+  setCardThumbnail(card, video.thumbnail);
   const heading = document.createElement("div");
   heading.className = "video-heading";
   const kind = document.createElement("span");
@@ -1160,7 +1186,7 @@ function createVideoCard(video, index, initialQuality = "best") {
     feedback.dataset.kind = "error";
     feedback.textContent = t("drmManifest");
     card.dataset.index = String(index);
-    card.append(...(thumbnail ? [thumbnail] : []), heading, detail, actions, feedback);
+    card.append(heading, detail, actions, feedback);
     return card;
   }
 
@@ -1216,10 +1242,14 @@ function createVideoCard(video, index, initialQuality = "best") {
   });
 
   if (initialQuality === "best") {
-    pending4kProbe = pending4kProbe
+    const slot = nextFormatProbeSlot++ % formatProbeSlots.length;
+    formatProbeSlots[slot] = formatProbeSlots[slot]
       .then(async () => {
         if (!card.isConnected || page !== activePage) return;
-        const result = await runtimeMessage({ type: "probe_media_formats", url: video.url, referer, language: activeLanguage() });
+        const result = await runtimeMessage({
+          type: "probe_media_formats", url: video.url, referer,
+          refresh: page.refreshFormats, language: activeLanguage(),
+        });
         if (!card.isConnected || page !== activePage) return;
         const height = result.hdHeight || result.standardHeight || video.height;
         kind.textContent = qualityLabel(height);
@@ -1232,35 +1262,45 @@ function createVideoCard(video, index, initialQuality = "best") {
   }
 
   card.dataset.index = String(index);
-  card.append(...(thumbnail ? [thumbnail] : []), heading, detail, actions, feedback);
+  card.append(heading, detail, actions, feedback);
   return card;
 }
 
-async function scan() {
+async function scan({ refreshFormats = false } = {}) {
+  const request = ++scanRequest;
+  activePage = null;
   videos.replaceChildren();
   pageTitle.textContent = t("analyzingPage");
   setStatus(t("searchingPlayers"));
   rescan.disabled = true;
   try {
     const [tab] = await browserApi.tabs.query({ active: true, currentWindow: true });
+    if (request !== scanRequest) return;
     if (Number.isInteger(tab?.id)) restoreActiveProgress(tab.id);
     if (!tab?.id || !/^https?:/i.test(tab.url || "")) {
       throw new Error(t("chromePageUnsupported"));
     }
-    let results;
+    const host = new URL(tab.url).hostname;
+    const playerSite = /(^|\.)(?:youtube\.com|dailymotion\.[a-z]{2,3})$/i.test(host) || host === "youtu.be";
+    const getMonitoredMedia = () => runtimeMessage({
+      type: "get_network_media", tabId: tab.id, language: activeLanguage(),
+    }).catch(() => null);
+    const monitored = playerSite ? null : getMonitoredMedia();
+    const detect = (allFrames) => browserApi.scripting.executeScript({
+      target: { tabId: tab.id, allFrames },
+      func: detectVideosOnPage,
+      args: [activeLanguage()],
+    });
+    let results = playerSite ? await detect(false).catch(() => null) : null;
+    const mainVideoFound = Boolean(results?.[0]?.result?.videos?.length);
+    const monitoredMediaRequest = mainVideoFound ? null : (monitored || getMonitoredMedia());
     try {
-      results = await browserApi.scripting.executeScript({
-        target: { tabId: tab.id, allFrames: true },
-        func: detectVideosOnPage,
-        args: [activeLanguage()],
-      });
+      if (!mainVideoFound) results = await detect(true);
     } catch (_frameError) {
-      results = await browserApi.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: detectVideosOnPage,
-        args: [activeLanguage()],
-      });
+      if (!results) results = await detect(false);
     }
+    const monitoredResult = await monitoredMediaRequest;
+    if (request !== scanRequest) return;
     const mainResult = results.find((result) => result.frameId === 0)?.result;
     if (!mainResult) throw new Error(t("pageNoResponse"));
     const topPlayerKeys = new Set(mainResult.videos.map((video) => video.playerKey).filter(Boolean));
@@ -1276,7 +1316,7 @@ async function scan() {
       drmDetected ||= Boolean(frame.drmDetected);
       durationSeconds = Math.max(durationSeconds, Number(frame.durationSeconds) || 0);
       frame.videos.forEach((original) => {
-        const video = { ...original };
+        const video = { ...original, thumbnailFrameId: injection.frameId };
         if (video.playerKey) {
           video.playerKey = injection.frameId !== 0 && singleEmbeddedPlayer
             ? "0:embed-0"
@@ -1300,17 +1340,8 @@ async function scan() {
         video.thumbnailRect = topFrameRects.get(video.playerKey);
       }
     });
-    let monitoredMedia = [];
-    let tf1Status = null;
-    try {
-      const monitored = await runtimeMessage({ type: "get_network_media", tabId: tab.id, language: activeLanguage() });
-      if (monitored?.ok) {
-        if (Array.isArray(monitored.media)) monitoredMedia = monitored.media;
-        tf1Status = monitored.tf1Status || null;
-      }
-    } catch (_networkError) {
-      // La détection dans la page reste disponible si le moniteur réseau est indisponible.
-    }
+    const monitoredMedia = Array.isArray(monitoredResult?.media) ? monitoredResult.media : [];
+    const tf1Status = monitoredResult?.tf1Status || null;
     monitoredMedia.forEach((video) => {
       const identity = `${video.url}|${video.playerKey || ""}`;
       const previous = merged.get(identity);
@@ -1335,7 +1366,6 @@ async function scan() {
         ? (video.label || `${t("video")} ${index + 1}`)
         : (mediaTitle || video.label)),
     }));
-    await enrichWeakThumbnails(tab, selectedVideos);
     activePage = {
       tabId: tab.id,
       pageUrl: tab.url,
@@ -1344,6 +1374,7 @@ async function scan() {
       durationSeconds,
       videos: selectedVideos.slice(0, 12),
       hiddenSourceCount: filtered.hiddenCount,
+      refreshFormats,
     };
     pageTitle.textContent = activePage.pageTitle;
     if (!activePage.videos.length) {
@@ -1362,10 +1393,12 @@ async function scan() {
     const extras = notes.length ? ` · ${notes.join(" · ")}` : "";
     setStatus(t(count > 1 ? "detectedMany" : "detectedOne", { count, extras }), activePage.drmDetected ? "warning" : "normal");
     activePage.videos.forEach((video, index) => videos.append(createVideoCard(video, index)));
+    void enrichWeakThumbnails(tab, activePage).catch(() => {});
+    void enrichAmazonThumbnails(tab, activePage).catch(() => {});
   } catch (error) {
-    setStatus(error.message || t("scanFailed"), "error");
+    if (request === scanRequest) setStatus(error.message || t("scanFailed"), "error");
   } finally {
-    rescan.disabled = false;
+    if (request === scanRequest) rescan.disabled = false;
   }
 }
 
@@ -1439,7 +1472,7 @@ checkUpdate.addEventListener("click", () => {
 });
 installBridgeUpdate.addEventListener("click", () => updateCreatorBridge(true));
 
-rescan.addEventListener("click", scan);
+rescan.addEventListener("click", () => scan({ refreshFormats: true }));
 
 loadSettings()
   .then(() => Promise.all([scan(), findUpdate(false)]))

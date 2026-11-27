@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.19.1")
+        self.assertEqual(manifest["version"], "2.19.2")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,12 +27,12 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.19.1"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.19.2"', source)
         self.assertIn("browserApi.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
         self.assertIn('return "DASH"', source)
-        self.assertIn("allFrames: true", source)
+        self.assertIn("if (!mainVideoFound) results = await detect(true)", source)
 
     def test_update_cache_is_invalidated_after_an_extension_upgrade(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
@@ -49,7 +49,10 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("function captureVideoFrame(video)", source)
         self.assertIn("browserApi.tabs.captureVisibleTab", source)
         self.assertIn("function croppedVisibleThumbnail", source)
-        self.assertIn("await enrichWeakThumbnails(tab, selectedVideos)", source)
+        self.assertLess(
+            source.index("videos.append(createVideoCard(video, index))"),
+            source.index("void enrichWeakThumbnails(tab, activePage)"),
+        )
         self.assertIn('thumbnail.className = "video-thumbnail"', source)
         self.assertIn("thumbnail.addEventListener(\"error\"", source)
         self.assertIn(".video-thumbnail", styles)
@@ -272,11 +275,14 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_amazon_video_posters_are_inlined_for_reliable_thumbnails(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn("async function inlineAmazonThumbnails(candidates)", source)
+        self.assertIn("async function inlineAmazonThumbnails(urls)", source)
         self.assertIn("media-amazon", source)
         self.assertIn('cache: "force-cache"', source)
-        self.assertIn("candidate.thumbnail = encoded", source)
-        self.assertIn("await inlineAmazonThumbnails(found)", source)
+        self.assertIn("func: inlineAmazonThumbnails,", source)
+        self.assertLess(
+            source.index("videos.append(createVideoCard(video, index))"),
+            source.index("void enrichAmazonThumbnails(tab, activePage)"),
+        )
 
     def test_notification_count_is_removed_from_media_titles(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")

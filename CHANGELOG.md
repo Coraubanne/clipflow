@@ -2,6 +2,11 @@
 
 All notable user-facing changes are documented here.
 
+## 2.19.2 — 2026-11-27
+
+- Show video proposals immediately after detection while thumbnails and resolutions load.
+- Open results faster on YouTube and Dailymotion and reuse recently confirmed formats when the extension is reopened.
+
 ## 2.19.1 — 2026-11-27
 
 - Made 4K MKV-to-MP4 conversion lossless by default with a single download button.

@@ -11,7 +11,12 @@ const TF1_STATUS_PREFIX = "tubeSaveTf1Status:";
 const ACTIVE_JOB_PREFIX = "clipFlowActiveJob:";
 const TF1_PENDING_TTL = 2 * 60 * 1000;
 const JOB_POLL_INTERVAL = 700;
+const FORMAT_CACHE_KEY = "clipFlowFormatSummaries";
+const FORMAT_CACHE_TTL = 2 * 60 * 1000;
+const FORMAT_CACHE_LIMIT = 48;
 let networkMediaWrites = Promise.resolve();
+let formatCacheWrites = Promise.resolve();
+const pendingFormatProbes = new Map();
 const tf1HlsRequests = new Set();
 const activeJobPollers = new Map();
 
@@ -463,6 +468,37 @@ async function sendNativeMessage(message) {
   return response;
 }
 
+async function readFormatCache() {
+  const stored = await browserApi.storage.session.get(FORMAT_CACHE_KEY).catch(() => ({}));
+  const now = Date.now();
+  return (stored[FORMAT_CACHE_KEY] || []).filter((entry) => entry.expiresAt > now);
+}
+
+async function probeMediaFormats(url, referer, language, refresh) {
+  const bytes = new TextEncoder().encode(JSON.stringify([url, referer]));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const key = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  if (pendingFormatProbes.has(key)) return pendingFormatProbes.get(key);
+  const probe = (async () => {
+    if (!refresh) {
+      const cached = (await readFormatCache()).find((entry) => entry.key === key);
+      if (cached) return cached.result;
+    }
+    const result = await sendNativeMessage({ action: "probe_media_formats", url, referer, language });
+    if (result.standardAvailable === true || result.mkvHeight === 2160) {
+      formatCacheWrites = formatCacheWrites.then(async () => {
+        const others = (await readFormatCache()).filter((entry) => entry.key !== key);
+        const entries = [{ key, result, expiresAt: Date.now() + FORMAT_CACHE_TTL }, ...others];
+        await browserApi.storage.session.set({ [FORMAT_CACHE_KEY]: entries.slice(0, FORMAT_CACHE_LIMIT) });
+      }).catch(() => {});
+      await formatCacheWrites;
+    }
+    return result;
+  })().finally(() => pendingFormatProbes.delete(key));
+  pendingFormatProbes.set(key, probe);
+  return probe;
+}
+
 async function handleMessage(message, sender) {
   const language = interfaceLanguage(message?.language);
   if (sender.id !== browserApi.runtime.id || !message || typeof message !== "object") {
@@ -538,7 +574,7 @@ async function handleMessage(message, sender) {
     const referer = message.referer
       ? normalizedWebUrl(message.referer, backgroundText(language, "invalidReferer"))
       : "";
-    return sendNativeMessage({ action: "probe_media_formats", url, referer, language });
+    return probeMediaFormats(url, referer, language, message.refresh === true);
   }
   if (message.type !== "download") {
     throw new Error(backgroundText(language, "unknownAction"));
