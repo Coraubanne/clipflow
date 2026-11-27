@@ -69,14 +69,18 @@
       </label>
     </section>
 
-    <section id="download-progress" class="download-progress" hidden aria-live="polite">
-      <div class="progress-copy">
-        <span id="progress-label" data-i18n="download">Téléchargement</span>
-        <small id="progress-detail" data-i18n="preparing">Préparation…</small>
-      </div>
-      <strong id="progress-percent">1 %</strong>
-      <div class="progress-track" aria-hidden="true"><span id="progress-fill"></span></div>
-    </section>
+    <section id="download-progress" class="progress-list" hidden></section>
+    <template id="progress-template">
+      <article class="download-progress">
+        <div class="progress-copy">
+          <span class="progress-label"></span>
+          <small class="progress-detail"></small>
+        </div>
+        <strong class="progress-percent"></strong>
+        <div class="progress-track" aria-hidden="true"><span class="progress-fill"></span></div>
+        <button class="cancel-download" type="button"></button>
+      </article>
+    </template>
 
     <section class="results" aria-live="polite">
       <div class="results-heading">

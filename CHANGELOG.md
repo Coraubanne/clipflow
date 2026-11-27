@@ -2,6 +2,12 @@
 
 All notable user-facing changes are documented here.
 
+## 2.18.0 — 2026-11-27
+
+- Added cancellation from the extension for queued downloads, active transfers and conversions.
+- Displayed measured FFmpeg progress when converting video or audio.
+- Showed detected resolutions and gave the standard MP4 and optional 4K conversion separate cards.
+
 ## 2.17.1 — 2026-11-27
 
 - Show the MP4 conversion stage in the extension after the download finishes.

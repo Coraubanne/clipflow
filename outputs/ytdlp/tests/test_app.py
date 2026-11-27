@@ -19,12 +19,13 @@ from app import (
     build_download_command,
     child_environment,
     consume_extension_requests,
+    conversion_percent,
+    describe_media_formats,
     drm_protected_output,
     ensure_chrome_native_host,
     ensure_native_host,
     extension_request_values,
     hide_visible_partials,
-    has_4k_mkv,
     is_web_url,
     is_youtube_url,
     is_retryable_output,
@@ -58,7 +59,7 @@ class TubeSaveTests(unittest.TestCase):
             process.wait.return_value = 0
             worker._download_once()
         self.assertEqual(
-            [value for event, value in list(events.queue) if event == "phase"],
+            [value for event, value in list(events.queue) if event in {"phase", "conversion"}],
             [
                 "Connexion au site vidéo…",
                 "Flux sélectionnés · téléchargement…",
@@ -82,15 +83,32 @@ class TubeSaveTests(unittest.TestCase):
 
     def test_4k_probe_rejects_lower_resolution_and_direct_mp4(self):
         url = "https://www.youtube.com/watch?v=example"
-        with (
-            patch("app.yt_dlp_prefix", return_value=["yt-dlp"]),
-            patch("app.ffmpeg_executable", return_value=Path("/ffmpeg")),
-            patch("app.subprocess.run") as invoke,
+        for height, codec, extension, expected in (
+            (2160, "vp9", "webm", True), (1080, "vp9", "webm", False), (2160, "avc1", "mp4", False),
         ):
-            for stdout, available in (("2160|mkv\n", True), ("1080|mkv\n", False), ("2160|mp4\n", False)):
-                with self.subTest(stdout=stdout):
-                    invoke.return_value = subprocess.CompletedProcess([], 0, stdout=stdout)
-                    self.assertIs(has_4k_mkv(url), available)
+            with self.subTest(height=height, codec=codec):
+                info = {"id": "fixture", "title": "Fixture", "extractor": "youtube", "formats": [
+                    {"format_id": "source", "url": "https://example.com/video",
+                     "vcodec": codec, "acodec": "none", "height": height, "ext": extension},
+                    {"format_id": "hd", "url": "https://example.com/hd",
+                     "vcodec": "avc1", "acodec": "none", "height": 1080, "ext": "mp4"},
+                    {"format_id": "audio", "url": "https://example.com/audio",
+                     "vcodec": "none", "acodec": "aac", "ext": "m4a"},
+                ]}
+                formats = describe_media_formats(info, url, Path("/ffmpeg"))
+                self.assertEqual(formats["standardHeight"], 2160 if codec == "avc1" else 1080)
+                self.assertEqual(formats.get("mkvHeight"), 2160 if expected else None)
+                if expected:
+                    self.assertEqual(formats["hdHeight"], 1080)
+
+    def test_conversion_progress_reads_latest_ffmpeg_timestamp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "ffmpeg.txt"
+            self.assertEqual(conversion_percent(report, 60), 0)
+            report.write_text("out_time_us=10000000\nprogress=continue\nout_time_us=24000000\n")
+            self.assertEqual(conversion_percent(report, 60), 40)
+            report.write_text("out_time_us=60000000\nprogress=end\n")
+            self.assertEqual(conversion_percent(report, 60), 99)
 
     def test_only_one_background_agent_can_hold_the_runtime_lock(self):
         with tempfile.TemporaryDirectory() as directory:

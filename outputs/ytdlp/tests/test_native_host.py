@@ -21,6 +21,37 @@ from native_host import (
 
 
 class NativeHostTests(unittest.TestCase):
+    def test_cancel_request_can_target_a_queued_job_but_not_a_premiere_import(self):
+        from app import cancel_request_path, write_extension_status
+
+        with tempfile.TemporaryDirectory() as directory, patch("pathlib.Path.home", return_value=Path(directory)):
+            write_extension_status("queued", "queued", 1, "Préparation…")
+            write_extension_status("import", "running", 99, "Import Premiere", phase="import")
+            self.assertTrue(handle_message({"action": "cancel", "jobId": "queued"})["requested"])
+            self.assertTrue(cancel_request_path("queued").is_file())
+            self.assertFalse(handle_message({"action": "cancel", "jobId": "import"})["requested"])
+            self.assertFalse(cancel_request_path("import").exists())
+            with self.assertRaises(ValueError):
+                handle_message({"action": "cancel", "jobId": "../queued"})
+
+    def test_agent_removes_only_the_cancelled_queued_request(self):
+        from types import SimpleNamespace
+        from app import TubeSaveApp, extension_inbox, write_extension_status
+
+        with tempfile.TemporaryDirectory() as directory, patch("pathlib.Path.home", return_value=Path(directory)):
+            inbox = extension_inbox()
+            inbox.mkdir(parents=True)
+            for job in ("queued", "other"):
+                (inbox / f"{job}.json").write_text("{}")
+                write_extension_status(job, "queued", 1, "Préparation…")
+            handle_message({"action": "cancel", "jobId": "queued"})
+            active = SimpleNamespace(worker=object(), active_job_id="running", extension_inbox=inbox,
+                                     after=lambda *_: None, _poll_extension_requests=lambda: None)
+            TubeSaveApp._poll_extension_requests(active)
+            self.assertEqual(handle_message({"action": "status", "jobId": "queued"})["state"], "cancelled")
+            self.assertEqual(handle_message({"action": "status", "jobId": "other"})["state"], "queued")
+            self.assertTrue((inbox / "other.json").is_file())
+
     def test_validated_job_uses_selected_quality_and_downloads(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)

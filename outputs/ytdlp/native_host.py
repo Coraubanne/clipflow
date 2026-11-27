@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 
 MAX_MESSAGE_SIZE = 1024 * 1024
-QUALITY_KEYS = {"best", "audio", "1080", "720", "480", "4k-mkv"}
+QUALITY_KEYS = {"best", "audio", "1080", "720", "480", "4k-mkv", "hd"}
 DESTINATION_KEYS = {"downloads", "movies", "desktop", "custom", "premiere"}
 JOB_ID_LENGTH_LIMIT = 96
 PREMIERE_STATE_MAX_AGE_SECONDS = 15
@@ -34,6 +34,7 @@ ENGLISH_MESSAGES = {
     "Flux sélectionnés · téléchargement…": "Streams selected · downloading…",
     "Assemblage audio et vidéo sans réencodage…": "Merging audio and video without re-encoding…",
     "Conversion de la vidéo en MP4…": "Converting the video to MP4…",
+    "Conversion audio en MP3…": "Converting audio to MP3…",
     "Impossible de confirmer la résolution 4K de cette source MKV.": "Could not verify the 4K resolution of this MKV source.",
     "Téléchargement annulé": "Download cancelled",
     "Le téléchargement n’a pas pu être terminé.": "The download could not be completed.",
@@ -319,10 +320,21 @@ def read_status(message: dict[str, object]) -> dict[str, object]:
     return {
         "ok": True,
         "state": str(payload.get("state", "unknown")),
+        "phase": str(payload.get("phase", "download")),
         "progress": max(0, min(100, int(payload.get("progress", 0)))),
         "message": localized_message(payload.get("message", ""), interface_language(message))[:500],
         "updatedAt": int(payload.get("updatedAt", 0)),
     }
+
+
+def request_cancel(message: dict[str, object]) -> dict[str, object]:
+    status = read_status(message)
+    if status["state"] not in {"queued", "running"} or status["phase"] == "import":
+        return {"ok": True, "requested": False}
+    from app import cancel_request_path
+
+    cancel_request_path(valid_job_id(message.get("jobId"))).touch(mode=0o600)
+    return {"ok": True, "requested": True}
 
 
 def app_bundle() -> Path:
@@ -372,8 +384,8 @@ def queue_download(message: dict[str, object]) -> dict[str, object]:
     destination = inbox / f"{identifier}.json"
     temporary.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
     os.chmod(temporary, 0o600)
-    temporary.replace(destination)
     write_status(identifier, "queued", 1, "Préparation du téléchargement…")
+    temporary.replace(destination)
 
     try:
         launch_app_for_job(destination)
@@ -423,16 +435,19 @@ def handle_message(message: object) -> dict[str, object]:
     language = interface_language(message)
     if action == "download":
         return queue_download(message)
-    if action == "probe_4k_mkv":
+    if action in {"probe_4k_mkv", "probe_media_formats"}:
         url = message.get("url")
         referer = message.get("referer")
         if not is_supported_video_request_url(url) or (referer and not is_public_web_url(referer)):
             return {"ok": True, "available": False}
-        from app import has_4k_mkv
+        from app import probe_media_formats
 
-        return {"ok": True, "available": has_4k_mkv(str(url), str(referer) if referer else None)}
+        formats = probe_media_formats(str(url), str(referer) if referer else None)
+        return {"ok": True, "available": bool(formats.get("mkvHeight")), **formats}
     if action == "status":
         return read_status(message)
+    if action == "cancel":
+        return request_cancel(message)
     if action == "choose_folder":
         return choose_folder(language)
     if action == "check_update":

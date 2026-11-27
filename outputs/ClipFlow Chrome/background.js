@@ -2,7 +2,7 @@ const NATIVE_HOST = "fr.tubesave.chrome";
 const browserApi = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const SETTINGS_VERSION = 7;
-const QUALITY_KEYS = new Set(["best", "audio", "1080", "720", "480", "4k-mkv"]);
+const QUALITY_KEYS = new Set(["best", "audio", "1080", "720", "480", "4k-mkv", "hd"]);
 const DESTINATION_KEYS = new Set(["downloads", "movies", "desktop", "custom", "premiere"]);
 const NETWORK_MEDIA_PREFIX = "tubeSaveNetworkMedia:";
 const NETWORK_MEDIA_TTL = 30 * 60 * 1000;
@@ -27,15 +27,17 @@ function tf1StatusKey(tabId) {
   return `${TF1_STATUS_PREFIX}${tabId}`;
 }
 
-function activeJobKey(tabId) {
-  return `${ACTIVE_JOB_PREFIX}${tabId}`;
+function activeJobKey(tabId, jobId) {
+  return `${ACTIVE_JOB_PREFIX}${tabId}${jobId ? `:${jobId}` : ""}`;
 }
 
-async function rememberActiveJob(tabId, response, language = "fr") {
+async function rememberActiveJob(tabId, response, language = "fr", title = "") {
   if (!Number.isInteger(tabId) || tabId < 0 || typeof response?.jobId !== "string") return;
-  await browserApi.storage.session.set({
-    [activeJobKey(tabId)]: {
+  await browserApi.storage.local.set({
+    [activeJobKey(tabId, response.jobId)]: {
       jobId: response.jobId,
+      tabId,
+      title,
       destinationLabel: response.destinationLabel || "Téléchargements",
       state: "queued",
       progress: 1,
@@ -53,66 +55,85 @@ async function updateJobBadge(tabId, response) {
     : response.state === "error" || response.state === "cancelled"
       ? "!"
       : `${Math.max(1, Math.min(99, Number(response.progress) || 1))}%`;
-  await browserApi.action.setBadgeText({ tabId, text: badgeText });
+  await browserApi.action.setBadgeText({ tabId, text: badgeText }).catch(() => {});
   await browserApi.action.setBadgeBackgroundColor({
     tabId,
     color: response.state === "complete" ? "#248a3d" : response.state === "error" ? "#d70015" : "#0a84ff",
-  });
+  }).catch(() => {});
 }
 
-function stopActiveJobMonitor(tabId) {
-  const current = activeJobPollers.get(tabId);
+function stopActiveJobMonitor(jobId) {
+  const current = activeJobPollers.get(jobId);
   if (current?.timer) clearTimeout(current.timer);
-  activeJobPollers.delete(tabId);
+  activeJobPollers.delete(jobId);
 }
 
 function monitorActiveJob(tabId, jobId, language = "fr") {
   if (!Number.isInteger(tabId) || tabId < 0 || typeof jobId !== "string" || !jobId) return;
-  stopActiveJobMonitor(tabId);
+  stopActiveJobMonitor(jobId);
   const token = { jobId, timer: null };
-  activeJobPollers.set(tabId, token);
+  activeJobPollers.set(jobId, token);
 
   const poll = async () => {
-    if (activeJobPollers.get(tabId) !== token) return;
+    if (activeJobPollers.get(jobId) !== token) return;
     try {
       const response = await sendNativeMessage({ action: "status", jobId, language: interfaceLanguage(language) });
-      const key = activeJobKey(tabId);
-      const stored = await browserApi.storage.session.get(key);
-      if (stored[key]?.jobId === jobId) {
-        await browserApi.storage.session.set({
-          [key]: {
-            ...stored[key],
-            state: response.state,
-            progress: response.progress,
-            message: response.message,
-            updatedAt: Date.now(),
-          },
-        });
-      }
-      await updateJobBadge(tabId, response);
-      if (["complete", "error", "cancelled"].includes(response.state)) {
-        stopActiveJobMonitor(tabId);
+      await rememberJobStatus(tabId, jobId, response);
+      if (finishedJob(response)) {
+        stopActiveJobMonitor(jobId);
         return;
       }
     } catch (_error) {
       // Le prochain passage reprend automatiquement après un redémarrage bref
       // du moteur local ou du service worker Manifest V3.
     }
-    if (activeJobPollers.get(tabId) === token) {
+    if (activeJobPollers.get(jobId) === token) {
       token.timer = setTimeout(poll, JOB_POLL_INTERVAL);
     }
   };
   poll();
 }
 
-async function resumeActiveJobMonitors() {
-  const stored = await browserApi.storage.session.get(null);
-  Object.entries(stored).forEach(([key, job]) => {
-    if (!key.startsWith(ACTIVE_JOB_PREFIX) || typeof job?.jobId !== "string") return;
-    if (["complete", "error", "cancelled"].includes(job.state)) return;
-    const tabId = Number(key.slice(ACTIVE_JOB_PREFIX.length));
-    if (Number.isInteger(tabId) && tabId >= 0) monitorActiveJob(tabId, job.jobId, job.language);
+function finishedJob(job) {
+  return ["complete", "error", "cancelled"].includes(job.state);
+}
+
+async function rememberJobStatus(tabId, jobId, response) {
+  const currentKey = activeJobKey(tabId, jobId);
+  const legacyKey = activeJobKey(tabId);
+  const stored = await browserApi.storage.local.get(currentKey);
+  const original = stored[currentKey] || (await browserApi.storage.session.get(legacyKey))[legacyKey];
+  if (original?.jobId !== jobId) return;
+  await browserApi.storage.local.set({
+    [currentKey]: {
+      ...original, state: response.state, phase: response.phase,
+      progress: response.progress, message: response.message, updatedAt: Date.now(),
+    },
   });
+  if (!stored[currentKey]) await browserApi.storage.session.remove(legacyKey);
+  await updateJobBadge(tabId, response);
+}
+
+function storedJobs(stored) {
+  return Object.entries(stored).flatMap(([key, job]) => {
+    if (!key.startsWith(ACTIVE_JOB_PREFIX) || typeof job?.jobId !== "string") return [];
+    const tabId = Number(key.slice(ACTIVE_JOB_PREFIX.length).split(":")[0]);
+    return Number.isInteger(tabId) && tabId >= 0 ? [{ key, job: { ...job, tabId } }] : [];
+  });
+}
+
+async function resumeActiveJobMonitors() {
+  for (const { job } of await jobEntries()) {
+    if (!finishedJob(job)) monitorActiveJob(job.tabId, job.jobId, job.language);
+  }
+}
+
+async function jobEntries() {
+  const [legacy, current] = await Promise.all([
+    browserApi.storage.session.get(null), browserApi.storage.local.get(null),
+  ]);
+  const entries = storedJobs({ ...legacy, ...current });
+  return [...new Map(entries.map((entry) => [entry.job.jobId, entry])).values()];
 }
 
 function setTf1Status(tabId, state, message) {
@@ -334,7 +355,7 @@ async function requestTf1HlsVariant(details) {
         url: streamUrl,
         referer: pending.pageUrl || pending.nativeRequest.referer || "",
       });
-      await rememberActiveJob(details.tabId, response, pending.nativeRequest.language);
+      await rememberActiveJob(details.tabId, response, pending.nativeRequest.language, pending.nativeRequest.sourceTitle);
       await setTf1Status(
         details.tabId,
         "sent",
@@ -369,8 +390,7 @@ browserApi.tabs.onUpdated.addListener((tabId, changeInfo) => {
 });
 
 browserApi.tabs.onRemoved.addListener((tabId) => {
-  stopActiveJobMonitor(tabId);
-  browserApi.storage.session.remove([networkMediaKey(tabId), tf1PendingKey(tabId), tf1StatusKey(tabId), activeJobKey(tabId)]);
+  browserApi.storage.session.remove([networkMediaKey(tabId), tf1PendingKey(tabId), tf1StatusKey(tabId)]);
 });
 
 function normalizedWebUrl(rawUrl, errorMessage = "Adresse de vidéo invalide.") {
@@ -486,44 +506,39 @@ async function handleMessage(message, sender) {
       language,
     });
   }
-  if (message.type === "get_active_job") {
+  if (message.type === "get_active_jobs") {
     const tabId = Number(message.tabId);
     if (!Number.isInteger(tabId) || tabId < 0) throw new Error(backgroundText(language, "invalidTab"));
-    const key = activeJobKey(tabId);
-    const stored = await browserApi.storage.session.get(key);
-    const job = stored[key] || null;
-    if (job && Number(job.updatedAt || 0) < Date.now() - 24 * 60 * 60 * 1000) {
-      await browserApi.storage.session.remove(key);
-      return { ok: true, job: null };
+    const entries = await jobEntries();
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const stale = entries.filter(({ job }) => finishedJob(job) && job.updatedAt < cutoff);
+    for (const storage of [browserApi.storage.session, browserApi.storage.local]) {
+      if (stale.length) await storage.remove(stale.map(({ key }) => key));
     }
-    return { ok: true, job };
+    const jobs = entries.map(({ job }) => job).filter((job) => !finishedJob(job));
+    const recent = entries.map(({ job }) => job)
+      .filter((job) => finishedJob(job) && job.tabId === tabId && job.updatedAt >= cutoff)
+      .sort((first, second) => second.updatedAt - first.updatedAt)[0];
+    return { ok: true, jobs: jobs.length || !recent ? jobs : [recent] };
   }
-  if (message.type === "download_status") {
+  if (message.type === "download_status" || message.type === "cancel_download") {
     const tabId = Number(message.tabId);
     if (!Number.isInteger(tabId) || tabId < 0) throw new Error(backgroundText(language, "invalidTab"));
-    const response = await sendNativeMessage({ action: "status", jobId: message.jobId, language });
-    const key = activeJobKey(tabId);
-    const stored = await browserApi.storage.session.get(key);
-    if (stored[key]) {
-      await browserApi.storage.session.set({
-        [key]: {
-          ...stored[key],
-          state: response.state,
-          progress: response.progress,
-          message: response.message,
-          updatedAt: Date.now(),
-        },
-      });
+    if (message.type === "cancel_download") {
+      const entries = await jobEntries();
+      if (!entries.some(({ job }) => job.jobId === message.jobId && job.tabId === tabId)) {
+        return { ok: true, requested: false };
+      }
+      return sendNativeMessage({ action: "cancel", jobId: message.jobId, language });
     }
-    await updateJobBadge(tabId, response);
-    return response;
+    return sendNativeMessage({ action: "status", jobId: message.jobId, language });
   }
-  if (message.type === "probe_4k_mkv") {
+  if (message.type === "probe_media_formats") {
     const url = normalizedWebUrl(message.url, backgroundText(language, "invalidVideo"));
     const referer = message.referer
       ? normalizedWebUrl(message.referer, backgroundText(language, "invalidReferer"))
       : "";
-    return sendNativeMessage({ action: "probe_4k_mkv", url, referer, language });
+    return sendNativeMessage({ action: "probe_media_formats", url, referer, language });
   }
   if (message.type !== "download") {
     throw new Error(backgroundText(language, "unknownAction"));
@@ -534,7 +549,7 @@ async function handleMessage(message, sender) {
     ? normalizedWebUrl(message.referer, backgroundText(language, "invalidReferer"))
     : "";
   const requestedQuality = QUALITY_KEYS.has(message.quality) ? message.quality : "best";
-  const quality = ["audio", "4k-mkv"].includes(requestedQuality) ? requestedQuality : "best";
+  const quality = ["audio", "4k-mkv", "hd"].includes(requestedQuality) ? requestedQuality : "best";
   const destination = DESTINATION_KEYS.has(message.destination)
     ? message.destination
     : "downloads";
@@ -590,7 +605,7 @@ async function handleMessage(message, sender) {
     };
   }
   const response = await sendNativeMessage(nativeRequest);
-  await rememberActiveJob(tabId, response, language);
+  await rememberActiveJob(tabId, response, language, sourceTitle);
   return response;
 }
 

@@ -155,7 +155,7 @@ main { padding: 0 9px 9px; }
 .settings-panel[hidden] { display: none; }
 
 body.settings-open .quick-options,
-body.settings-open .download-progress,
+body.settings-open .progress-list,
 body.settings-open .results {
   display: none !important;
 }
@@ -332,13 +332,31 @@ select {
   color: #fff;
   display: grid;
   gap: 7px 10px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   margin-bottom: 8px;
   min-height: 68px;
   padding: 11px 12px;
 }
 
-.download-progress[hidden] { display: none; }
+.progress-list[hidden], .cancel-download[hidden] { display: none; }
+
+.cancel-download {
+  background: rgba(255, 255, 255, .18);
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 650;
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  min-height: 25px;
+  padding: 4px 8px;
+}
+
+.cancel-download:hover { background: rgba(255, 255, 255, .27); }
+.cancel-download:disabled { cursor: wait; opacity: .75; }
 
 .progress-copy {
   display: flex;
@@ -349,6 +367,12 @@ select {
 .download-progress span {
   font-size: 11px;
   font-weight: 680;
+}
+
+.progress-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .download-progress small {
@@ -383,6 +407,20 @@ select {
   height: 100%;
   transition: width .16s linear;
   width: 1%;
+}
+
+.conversion-starting .progress-track span {
+  animation: conversion-start 1.25s ease-in-out infinite alternate;
+  min-width: 25%;
+}
+
+@keyframes conversion-start {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(400%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversion-starting .progress-track span { animation: none; }
 }
 
 .results {
@@ -526,6 +564,9 @@ select {
 }
 
 .without-thumbnail .video-detail { grid-column: 1; }
+.format-audio,
+.audio-only .format-video { display: none; }
+.audio-only .format-audio { display: inline; }
 
 .video-actions {
   display: flex;
@@ -536,7 +577,13 @@ select {
 }
 
 .without-thumbnail .video-actions { grid-column: 1; }
-.audio-only .download-4k { display: none; }
+.audio-only [data-quality="4k-mkv"],
+.video-list:not(.audio-only) .no-standard { display: none; }
+
+.video-card[data-quality="4k-mkv"] .video-kind {
+  background: rgba(24, 119, 226, .12);
+  color: #145ca4;
+}
 
 .download {
   font-size: 10px;

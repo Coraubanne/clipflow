@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.17.1")
+        self.assertEqual(manifest["version"], "2.18.0")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,7 +27,7 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.17.1"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.18.0"', source)
         self.assertIn("browserApi.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
@@ -85,16 +85,18 @@ class ChromeExtensionTests(unittest.TestCase):
         markup = (EXTENSION / "popup.html").read_text(encoding="utf-8")
         styles = (EXTENSION / "popup.css").read_text(encoding="utf-8")
         background = (EXTENSION / "background.js").read_text(encoding="utf-8")
-        self.assertIn('id="progress-percent"', markup)
-        self.assertIn("function animateProgress(target)", source)
+        self.assertIn('class="progress-percent"', markup)
+        self.assertIn('response.phase === "conversion"', source)
         self.assertIn('type: "download_status"', source)
         self.assertIn('action: "status"', background)
         self.assertIn("function monitorActiveJob(tabId, jobId, language", background)
         self.assertIn("resumeActiveJobMonitors()", background)
         self.assertIn("progress: response.progress", background)
         self.assertIn("updateJobBadge(tabId, response)", background)
-        self.assertIn('id="progress-fill"', markup)
-        self.assertIn("progressFill.style.width", source)
+        self.assertIn('class="progress-fill"', markup)
+        self.assertIn("fill.style.width", source)
+        self.assertIn('type: "cancel_download"', source)
+        self.assertIn('action: "cancel"', background)
         self.assertIn("width: 356px", styles)
 
     def test_popup_uses_best_quality_automatically_with_audio_only_checkbox(self):
@@ -103,15 +105,15 @@ class ChromeExtensionTests(unittest.TestCase):
         background = (EXTENSION / "background.js").read_text(encoding="utf-8")
         self.assertIn('id="audio-only"', markup)
         self.assertNotIn('id="quality"', markup)
-        self.assertIn('settings.audioOnly ? "audio" : "best"', source)
-        self.assertIn('["audio", "4k-mkv"].includes(requestedQuality) ? requestedQuality : "best"', background)
+        self.assertIn('settings.audioOnly ? "audio" : downloadQuality', source)
+        self.assertIn('["audio", "4k-mkv", "hd"].includes(requestedQuality) ? requestedQuality : "best"', background)
 
     def test_4k_conversion_is_separate_and_requires_positive_probe(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        probe = source.index('type: "probe_4k_mkv"')
-        guard = source.index("!result?.available", probe)
-        download = source.index('startDownload(option, "4k-mkv", label)', guard)
-        self.assertIn('window.confirm(t("confirm4k"))', source[guard:download])
+        probe = source.index('type: "probe_media_formats"')
+        guard = source.index("result.mkvHeight !== 2160", probe)
+        self.assertIn('card.after(createVideoCard({ ...video, height: result.mkvHeight }, index, "4k-mkv"))', source[guard:])
+        self.assertIn('window.confirm(t("confirm4k"))', source[:probe])
 
     def test_completion_sound_can_be_disabled_and_is_remembered(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
@@ -264,7 +266,7 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("rgba(24, 132, 255, .16)", styles)
         self.assertIn('document.body.classList.toggle("settings-open", open)', source)
         self.assertIn("body.settings-open .quick-options", styles)
-        self.assertIn("body.settings-open .download-progress", styles)
+        self.assertIn("body.settings-open .progress-list", styles)
         self.assertIn("body.settings-open .results", styles)
 
     def test_amazon_video_posters_are_inlined_for_reliable_thumbnails(self):
@@ -289,7 +291,7 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn('.endsWith(".webm")', source)
         self.assertIn("convertir en MP4", source)
         self.assertIn('"Télécharger et convertir en MP4"', source)
-        confirmation = 'if (requiresWebmConversion(video) && !window.confirm(t("webmConfirm"))) return;'
+        confirmation = 'if (!settings.audioOnly && requiresWebmConversion(video) && !window.confirm(t("webmConfirm"))) return;'
         self.assertIn(confirmation + '\n    startDownload(button,', source)
 
     def test_substack_native_players_use_their_public_mp4_sources(self):

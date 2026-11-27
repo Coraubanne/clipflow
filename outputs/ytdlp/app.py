@@ -7,18 +7,22 @@ import hashlib
 import json
 import ipaddress
 import fcntl
+import logging
 import os
 import queue
 import re
+import shlex
 import shutil
 import signal
 import ssl
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
 from collections import deque
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 import tkinter as tk
@@ -92,6 +96,7 @@ PROFILES = (
     QualityProfile("Audio uniquement · MP3", audio_only=True),
 )
 FOUR_K_MKV_PROFILE = QualityProfile("4K MKV vers MP4", mode="4k-mkv")
+HD_PROFILE = QualityProfile("MP4 jusqu’en 1080p", max_height=1080, mode="compatible")
 EXTENSION_PROFILE_BY_KEY = {
     "best": PROFILES[0].label,
     # Compatibilité avec les requêtes créées par les anciennes versions.
@@ -100,6 +105,7 @@ EXTENSION_PROFILE_BY_KEY = {
     "480": PROFILES[0].label,
     "audio": PROFILES[1].label,
     "4k-mkv": FOUR_K_MKV_PROFILE.label,
+    "hd": HD_PROFILE.label,
 }
 
 
@@ -305,12 +311,18 @@ def extension_status_directory(home: Path | None = None) -> Path:
     return (home or Path.home()) / "Library/Application Support/TubeSave/Status"
 
 
+def cancel_request_path(job_id: str, home: Path | None = None) -> Path:
+    return extension_status_directory(home) / f"{job_id}.cancel"
+
+
 def write_extension_status(
     job_id: str | None,
     state: str,
     progress: float,
     message: str,
     home: Path | None = None,
+    *,
+    phase: str = "download",
 ) -> None:
     if not job_id or not re.fullmatch(r"[A-Za-z0-9_-]{1,96}", job_id):
         return
@@ -321,6 +333,7 @@ def write_extension_status(
         temporary = directory / f".{job_id}.tmp"
         payload = {
             "state": state,
+            "phase": phase,
             "progress": max(0, min(100, round(progress))),
             "message": str(message)[:500],
             "updatedAt": int(time.time() * 1000),
@@ -846,33 +859,72 @@ def direct_mkv_is_4k(url: str, ffmpeg: Path, referer: str | None) -> bool:
     return bool(re.search(rb"Stream #0:\d+[^\n]*Video:[^\n]*\b\d{4}x2160\b", result.stderr))
 
 
-def mkv_4k_format_args(url: str) -> list[str]:
-    if is_direct_mkv_url(url):
-        # The raw stream is separately checked before the download starts.
-        return ["--format", "b*[height=?2160][ext=mkv]"]
+def mkv_4k_selector() -> str:
     split_video = "bv[height=2160][ext~='^(webm|mp4|mkv)$'][vcodec!^=avc1]"
-    selector = (
+    return (
         f"{split_video}+ba[format_note*=original]/"
         f"b[height=2160][ext=mkv][format_note*=original]/"
         f"{split_video}+ba/b[height=2160][ext=mkv]"
     )
-    return ["--format-sort-force", "--format-sort", "lang,res,br,fps", "--format", selector,
+
+
+def mkv_4k_format_args(url: str) -> list[str]:
+    if is_direct_mkv_url(url):
+        # The raw stream is separately checked before the download starts.
+        return ["--format", "b*[height=?2160][ext=mkv]"]
+    return ["--format-sort-force", "--format-sort", "lang,res,br,fps", "--format", mkv_4k_selector(),
             "--merge-output-format", "mkv"]
 
 
-def has_4k_mkv(url: str, referer: str | None = None) -> bool:
+def standard_video_selector(url: str, max_height: int | None = None) -> str:
+    # Select direct HTTPS H.264/AVC MP4 tracks first. YouTube's HLS links
+    # can expire during long downloads, whereas its direct DASH tracks are
+    # resumable and reliable. Keep HLS as a fallback for other sites.
+    height = "[height>=720]" if is_youtube_url(url) else ""
+    if max_height:
+        height += f"[height<=?{max_height}]"
+    video_direct = f"bv[ext=mp4][vcodec^=avc1]{height}[protocol^=http]"
+    direct = f"{video_direct}+ba[ext=m4a][protocol^=http]"
+    direct_combined = f"b[ext=mp4][vcodec^=avc1]{height}[protocol^=http]"
+    fallback = (
+        f"bv[ext=mp4][vcodec^=avc1]{height}+ba[ext=m4a]/"
+        f"bv[ext=mp4][vcodec^=avc1]{height}+ba[ext=mp4]/"
+        f"b[ext=mp4][vcodec^=avc1]{height}"
+    )
+    # Generic direct MP4 links often omit codec metadata even when the
+    # actual file is H.264/AAC (for example SeeArtTV). Keep them as a final
+    # no-conversion fallback after the stricter AVC choices.
+    generic_mp4 = (
+        f"b[ext=mp4]{height}[protocol^=http]/"
+        f"b[ext=mp4]{height}"
+    )
+    original_audio = ""
+    if is_youtube_url(url):
+        # YouTube can expose automatic translations as additional audio
+        # tracks. Prefer the extractor's explicit original marker first,
+        # but retain the normal choices for older videos whose metadata
+        # does not identify any track as original.
+        original_audio = (
+            f"{video_direct}+ba[ext=m4a][format_note*=original][protocol^=http]/"
+            f"bv[ext=mp4][vcodec^=avc1]{height}+ba[ext=m4a][format_note*=original]/"
+            f"bv[ext=mp4][vcodec^=avc1]{height}+ba[ext=mp4][format_note*=original]/"
+            f"b[ext=mp4][vcodec^=avc1]{height}[format_note*=original]/"
+        )
+    return f"{original_audio}{direct}/{direct_combined}/{fallback}/{generic_mp4}"
+
+
+def probe_media_formats(url: str, referer: str | None = None) -> dict[str, object]:
     prefix = yt_dlp_prefix()
     ffmpeg = ffmpeg_executable()
     if not prefix or not ffmpeg:
-        return False
+        return {}
     if is_direct_mkv_url(url):
-        return direct_mkv_is_4k(url, ffmpeg, referer)
+        height = 2160 if direct_mkv_is_4k(url, ffmpeg, referer) else None
+        return {"mkvHeight": height, "standardAvailable": False} if height else {}
     command = [
-        *prefix, "--ignore-config", "--no-playlist", "--simulate",
+        *prefix, "--ignore-config", "--no-playlist", "--dump-single-json",
         "--socket-timeout", "6", "--extractor-retries", "0",
-        "--extractor-args", "generic:impersonate",
-        "--ffmpeg-location", str(ffmpeg),
-        *mkv_4k_format_args(url), "--print", "%(height)s|%(ext)s",
+        "--extractor-args", "generic:impersonate", "--ffmpeg-location", str(ffmpeg),
     ]
     if referer:
         command.extend(["--referer", referer])
@@ -881,9 +933,51 @@ def has_4k_mkv(url: str, referer: str | None = None) -> bool:
             [*command, "--", url], env=child_environment(ca_bundle()),
             capture_output=True, text=True, timeout=12, check=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return result.returncode == 0 and result.stdout.strip() == "2160|mkv"
+        info = json.loads(result.stdout) if result.returncode == 0 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {}
+    if not isinstance(info, dict) or info.get("_type") not in {None, "video"}:
+        return {}
+    return describe_media_formats(info, url, ffmpeg)
+
+
+def describe_media_formats(info: dict[str, object], url: str, ffmpeg: Path) -> dict[str, object]:
+    from yt_dlp import YoutubeDL
+    from yt_dlp.utils import DownloadError, ExtractorError
+
+    # Replay the same selectors against one extracted metadata response.
+    # A logger keeps diagnostics off the native messaging stdout stream.
+    logger = logging.Logger("clipflow-format-probe", logging.CRITICAL)
+
+    def selected(selector: str, container: str) -> dict | None:
+        options = {
+            "format": selector, "format_sort": ["lang", "res", "br", "fps"],
+            "format_sort_force": True, "merge_output_format": container,
+            "ffmpeg_location": str(ffmpeg), "logger": logger,
+        }
+        try:
+            with YoutubeDL(options, auto_init=False) as ydl:
+                return ydl.process_ie_result(deepcopy(info), download=False)
+        except (DownloadError, ExtractorError):
+            return None
+
+    if is_direct_webm_url(url):
+        standard = selected("bestvideo*+bestaudio/best", "webm")
+        return {"standardHeight": (standard or {}).get("height"), "standardAvailable": bool(standard)}
+
+    standard_selector = standard_video_selector(url)
+    standard = selected(standard_selector, "mp4")
+    if not standard and is_youtube_url(url):
+        standard = selected(standard_selector.replace("[height>=720]", ""), "mp4")
+    mkv = selected(mkv_4k_selector(), "mkv")
+    summary = {"standardHeight": (standard or {}).get("height"), "standardAvailable": bool(standard)}
+    if mkv and mkv.get("height") == 2160 and mkv.get("ext") == "mkv":
+        summary["mkvHeight"] = 2160
+        hd_selector = standard_video_selector(url, HD_PROFILE.max_height).replace("[height>=720]", "")
+        hd = selected(hd_selector, "mp4")
+        if hd and hd.get("height"):
+            summary["hdHeight"] = hd["height"]
+    return summary
 
 
 def build_download_command(
@@ -936,7 +1030,7 @@ def build_download_command(
         "--progress-template",
         "download:[progress]%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
         "--print",
-        "before_dl:[format]%(height)s|%(vcodec)s|%(tbr)s|%(language)s",
+        "before_dl:[format]%(height)s|%(vcodec)s|%(tbr)s|%(language)s|%(duration)s",
         "--print",
         "after_move:[done]%(filepath)s",
         # --print implicitly enables yt-dlp's quiet mode. Turn it back off so
@@ -949,9 +1043,10 @@ def build_download_command(
         "--output",
         output_template,
     ]
-    if profile.mode == "4k-mkv":
-        # Keep the opt-in 4K file distinct from an existing standard MP4.
-        command[-1] = output_template.removesuffix(".%(ext)s") + " 4K.%(ext)s"
+    if profile.mode == "4k-mkv" or profile.max_height:
+        # Resolution-specific downloads must not reuse an existing standard MP4.
+        resolution = "4K" if profile.mode == "4k-mkv" else "%(height)sp"
+        command[-1] = output_template.removesuffix(".%(ext)s") + f" {resolution}.%(ext)s"
     if ffmpeg:
         command.extend(["--ffmpeg-location", str(ffmpeg)])
     if referer:
@@ -1008,46 +1103,10 @@ def build_download_command(
                 "lang,res,br,fps",
             ]
         )
-        # Select direct HTTPS H.264/AVC MP4 tracks first. YouTube's HLS links
-        # can expire during long downloads, whereas its direct DASH tracks are
-        # resumable and reliable. Keep HLS as a fallback for other sites.
-        minimum_height = "[height>=720]" if is_youtube_url(url) else ""
-        video_direct = f"bv[ext=mp4][vcodec^=avc1]{minimum_height}[protocol^=http]"
-        direct = f"{video_direct}+ba[ext=m4a][protocol^=http]"
-        direct_combined = f"b[ext=mp4][vcodec^=avc1]{minimum_height}[protocol^=http]"
-        fallback = (
-            f"bv[ext=mp4][vcodec^=avc1]{minimum_height}+ba[ext=m4a]/"
-            f"bv[ext=mp4][vcodec^=avc1]{minimum_height}+ba[ext=mp4]/"
-            f"b[ext=mp4][vcodec^=avc1]{minimum_height}"
-        )
-        # Generic direct MP4 links often omit codec metadata even when the
-        # actual file is H.264/AAC (for example SeeArtTV). Keep them as a final
-        # no-conversion fallback after the stricter AVC choices.
-        generic_mp4 = (
-            f"b[ext=mp4]{minimum_height}[protocol^=http]/"
-            f"b[ext=mp4]{minimum_height}"
-        )
-        original_audio = ""
-        if is_youtube_url(url):
-            # YouTube can expose automatic translations as additional audio
-            # tracks. Prefer the extractor's explicit original marker first,
-            # but retain the normal choices for older videos whose metadata
-            # does not identify any track as original.
-            original_audio = (
-                f"{video_direct}+ba[ext=m4a][format_note*=original][protocol^=http]/"
-                f"bv[ext=mp4][vcodec^=avc1]{minimum_height}+ba[ext=m4a][format_note*=original]/"
-                f"bv[ext=mp4][vcodec^=avc1]{minimum_height}+ba[ext=mp4][format_note*=original]/"
-                f"b[ext=mp4][vcodec^=avc1]{minimum_height}[format_note*=original]/"
-            )
-        selector = f"{original_audio}{direct}/{direct_combined}/{fallback}/{generic_mp4}"
-        command.extend(
-            [
-                "--format",
-                selector,
-                "--merge-output-format",
-                "mp4",
-            ]
-        )
+        command.extend([
+            "--format", standard_video_selector(url, profile.max_height),
+            "--merge-output-format", "mp4",
+        ])
     command.append(url)
     return command
 
@@ -1079,6 +1138,9 @@ class DownloadWorker:
         self._attempt_timed_out = False
         self._download_started = False
         self._download_component = 0
+        self._conversion_report: Path | None = None
+        self._conversion_output: Path | None = None
+        self._conversion_duration = 0.0
 
     def start(self) -> None:
         threading.Thread(target=self._run, daemon=True).start()
@@ -1101,19 +1163,34 @@ class DownloadWorker:
         self.cookie_decision.set()
 
     def _run(self) -> None:
+        if "--recode-video" in self.command or "--extract-audio" in self.command:
+            with tempfile.TemporaryDirectory(prefix="clipflow-progress-") as directory:
+                self._conversion_report = Path(directory) / "ffmpeg.txt"
+                args = f"-nostats -stats_period 0.5 -progress {shlex.quote(str(self._conversion_report))}"
+                if "--recode-video" in self.command:
+                    index = self.command.index("--postprocessor-args") + 1
+                    self.command[index] += f" {args}"
+                else:
+                    self.command[-1:-1] = ["--postprocessor-args", f"ExtractAudio+ffmpeg_o:{args}"]
+                self._run_attempts()
+        else:
+            self._run_attempts()
+
+    def _run_attempts(self) -> None:
         try:
-            if self.direct_4k_mkv and not direct_mkv_is_4k(*self.direct_4k_mkv):
-                self.events.put(("error", "Impossible de confirmer la résolution 4K de cette source MKV."))
-                return
+            if self.direct_4k_mkv:
+                verified = direct_mkv_is_4k(*self.direct_4k_mkv)
+                if not verified and not self.cancelled:
+                    self.events.put(("error", "Impossible de confirmer la résolution 4K de cette source MKV."))
+                    return
             automatic_retries = 0
             quality_retries = 0
             quality_fallback_used = False
             cookies_attempted = False
-            while True:
+            while not self.cancelled:
                 return_code, retryable, authentication_required, timed_out, quality_unavailable = self._download_once()
                 if self.cancelled:
-                    self.events.put(("cancelled", None))
-                    return
+                    break
                 if return_code == 0:
                     self.events.put(("finished", None))
                     return
@@ -1154,12 +1231,24 @@ class DownloadWorker:
                     return
                 self.events.put(("failed", return_code))
                 return
+            if self._conversion_output:
+                try:
+                    self._conversion_output.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            self.events.put(("cancelled", None))
         except Exception as error:
             self.events.put(("error", str(error)))
 
     def _watch_process(self, process: subprocess.Popen[str]) -> None:
+        last_percent = 0
         while process.poll() is None and not self.cancelled:
-            time.sleep(1)
+            time.sleep(0.5)
+            if self._conversion_report and self._conversion_output and self._conversion_duration > 0:
+                percent = conversion_percent(self._conversion_report, self._conversion_duration)
+                if percent > last_percent and process.poll() is None and not self.cancelled:
+                    self.events.put(("conversion_progress", percent))
+                    last_percent = percent
             if validation_timed_out(self._last_output_at, self._download_started):
                 self._attempt_timed_out = True
                 self._terminate(process)
@@ -1170,6 +1259,10 @@ class DownloadWorker:
         self._last_output_at = time.monotonic()
         self._download_started = False
         self._download_component = 0
+        self._conversion_duration = 0.0
+        self._conversion_output = None
+        if self._conversion_report:
+            self._conversion_report.unlink(missing_ok=True)
         self.events.put(("phase", "Connexion au site vidéo…"))
         self.process = subprocess.Popen(
             self.command,
@@ -1182,6 +1275,8 @@ class DownloadWorker:
             env=self.environment,
             start_new_session=True,
         )
+        if self.cancelled:
+            self._terminate(self.process)
         threading.Thread(
             target=self._watch_process,
             args=(self.process,),
@@ -1209,7 +1304,13 @@ class DownloadWorker:
                     ("progress", (percent, parts[1].strip() if len(parts) > 1 else "", parts[2].strip() if len(parts) > 2 else ""))
                 )
             elif line.startswith("[format]"):
-                self.events.put(("format", line.removeprefix("[format]").split("|", 3)))
+                parts = line.removeprefix("[format]").split("|", 4)
+                if len(parts) == 5:
+                    try:
+                        self._conversion_duration = float(parts[4])
+                    except ValueError:
+                        pass
+                self.events.put(("format", parts[:4]))
             elif line.startswith("[done]"):
                 self.events.put(("file", line.removeprefix("[done]").strip()))
             elif existing := already_downloaded_path(line):
@@ -1238,8 +1339,9 @@ class DownloadWorker:
                     self.events.put(("phase", "Flux sélectionnés · téléchargement…"))
                 elif line.startswith("[Merger]"):
                     self.events.put(("phase", "Assemblage audio et vidéo sans réencodage…"))
-                elif line.startswith("[VideoConvertor]"):
-                    self.events.put(("phase", "Conversion de la vidéo en MP4…"))
+                elif line.startswith("[VideoConvertor] Converting ") or line.startswith("[ExtractAudio] Destination:"):
+                    audio = line.startswith("[ExtractAudio]")
+                    self._start_conversion(line, audio)
                 self.events.put(("log", line))
         return (
             self.process.wait(),
@@ -1248,6 +1350,53 @@ class DownloadWorker:
             self._attempt_timed_out,
             quality_unavailable,
         )
+
+    def _start_conversion(self, line: str, audio: bool) -> None:
+        self._download_started = True
+        self.events.put(("conversion", "Conversion audio en MP3…" if audio else "Conversion de la vidéo en MP4…"))
+        output = Path(line.partition("Destination: ")[2])
+        if not output.is_absolute() or output.parent.name != ".tubesave-incomplete":
+            return
+        self._conversion_output = output
+        if self._conversion_duration > 0:
+            return
+        if audio:
+            candidates = [path for path in output.parent.iterdir() if path.stem == output.stem and path != output]
+            if len(candidates) != 1:
+                return
+            source = candidates[0]
+        else:
+            match = re.match(r"\[VideoConvertor\] Converting video from ([a-z0-9]+) to ", line)
+            if not match:
+                return
+            source = output.with_suffix(f".{match[1]}")
+        ffmpeg = self.command[self.command.index("--ffmpeg-location") + 1]
+        self._conversion_duration = media_duration(ffmpeg, source)
+
+
+def media_duration(ffmpeg: str, source: Path) -> float:
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-hide_banner", "-i", str(source)],
+            capture_output=True, text=True, timeout=4, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 0.0
+    match = re.search(r"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr)
+    if not match:
+        return 0.0
+    hours, minutes, seconds = map(float, match.groups())
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def conversion_percent(report: Path, duration: float) -> int:
+    try:
+        with report.open("rb") as stream:
+            stream.seek(max(0, report.stat().st_size - 4096))
+            timestamps = re.findall(rb"(?m)^out_time_us=(\d+)$", stream.read(8192))
+    except OSError:
+        return 0
+    return min(99, int(int(timestamps[-1]) / (duration * 10000))) if timestamps else 0
 
 
 class HeadlessValue:
@@ -1313,7 +1462,7 @@ class TubeSaveApp(tk.Tk):
         self.last_activity_at = time.monotonic()
         self.premiere_import_pending = False
         self.request_referer: str | None = None
-        self.request_4k_mkv = False
+        self.request_profile = PROFILES[0]
         self.request_source_title: str | None = None
         self.request_browser = "chrome"
         self.extension_inbox = extension_inbox()
@@ -1512,6 +1661,9 @@ class TubeSaveApp(tk.Tk):
 
     def _start(self) -> None:
         if self.worker: return
+        if self.active_job_id and cancel_request_path(self.active_job_id).exists():
+            self._event("cancelled", None)
+            return
         if not is_web_url(self.url.get()):
             self._start_error("Collez un lien public de page ou de vidéo valide.", warning=True)
             return
@@ -1525,10 +1677,8 @@ class TubeSaveApp(tk.Tk):
             return
         resume_legacy_partials(destination, self.url.get().strip())
         hide_visible_partials(destination, self.url.get().strip())
-        profile = PROFILES[1] if self.audio_only.get() else PROFILES[0]
-        if self.request_4k_mkv:
-            profile = FOUR_K_MKV_PROFILE
-        self.request_4k_mkv = False
+        profile = PROFILES[1] if self.audio_only.get() else self.request_profile
+        self.request_profile = PROFILES[0]
         url = self.url.get().strip()
         direct_4k_mkv = None
         if profile.mode == "4k-mkv" and is_direct_mkv_url(url):
@@ -1585,6 +1735,16 @@ class TubeSaveApp(tk.Tk):
 
     def _poll_extension_requests(self) -> None:
         try:
+            for marker in extension_status_directory().glob("*.cancel"):
+                if marker.stem == self.active_job_id:
+                    if self.worker and not self.worker.cancelled:
+                        self._cancel()
+                    continue
+                queued = self.extension_inbox / f"{marker.stem}.json"
+                if queued.exists():
+                    queued.unlink(missing_ok=True)
+                    write_extension_status(marker.stem, "cancelled", 0, "Téléchargement annulé")
+                marker.unlink(missing_ok=True)
             # Never remove several requests from disk while a download or a
             # Premiere import is active. If this process becomes stale, the
             # native host can see the pending file and launch a fresh instance.
@@ -1608,7 +1768,10 @@ class TubeSaveApp(tk.Tk):
                     self.url.set(url)
                     self.folder.set(str(destination))
                     self.audio_only.set(quality == PROFILES[1].label)
-                    self.request_4k_mkv = quality == FOUR_K_MKV_PROFILE.label
+                    self.request_profile = next(
+                        (profile for profile in (FOUR_K_MKV_PROFILE, HD_PROFILE) if profile.label == quality),
+                        PROFILES[0],
+                    )
                     self.request_referer = referer
                     self.request_source_title = source_title
                     self.status.set("Vidéo détectée par l’extension")
@@ -1703,6 +1866,18 @@ class TubeSaveApp(tk.Tk):
         elif event == "phase":
             self.details.set(str(payload))
             write_extension_status(self.active_job_id, "running", max(1, self.current_progress), str(payload))
+        elif event in {"conversion", "conversion_progress"}:
+            if event == "conversion":
+                self.status.set(str(payload))
+                self.details.set(str(payload))
+                self.current_progress = 0
+            else:
+                self.current_progress = float(payload)
+            self.bar["value"] = self.current_progress
+            self.percent.configure(text=f"{self.current_progress:.0f} %")
+            write_extension_status(
+                self.active_job_id, "running", self.current_progress, self.details.get(), phase="conversion",
+            )
         elif event == "retry":
             self.status.set("Connexion rétablie · nouvel essai…")
             self.details.set(f"Reprise automatique {payload}/2 · le fichier partiel est conservé")
@@ -1732,6 +1907,9 @@ class TubeSaveApp(tk.Tk):
             self.details.set("Autorisation mémorisée sur ce Mac · session utilisée temporairement")
             write_extension_status(self.active_job_id, "running", max(1, self.current_progress), self.details.get())
         elif event == "finished":
+            if self.active_job_id and cancel_request_path(self.active_job_id).exists():
+                self._event("cancelled", None)
+                return
             self.current_progress = 100.0
             self.bar["value"] = 100
             self.percent.configure(text="100 %")
@@ -1764,6 +1942,7 @@ class TubeSaveApp(tk.Tk):
                     "running",
                     99,
                     "Téléchargé · import dans Premiere Pro…",
+                    phase="import",
                 )
                 threading.Thread(
                     target=wait_for_premiere_import,
@@ -1808,6 +1987,11 @@ class TubeSaveApp(tk.Tk):
             return
 
     def _reset(self) -> None:
+        if self.active_job_id:
+            try:
+                cancel_request_path(self.active_job_id).unlink(missing_ok=True)
+            except OSError:
+                pass
         self.worker = None
         self.premiere_import_pending = False
         self.active_job_id = None

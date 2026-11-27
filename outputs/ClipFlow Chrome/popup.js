@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.17.1";
+const EXPECTED_EXTENSION_VERSION = "2.18.0";
 const browserApi = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
@@ -47,7 +47,9 @@ const UI_TEXT = {
     downloadCancelled: "Téléchargement annulé", downloadError: "Échec du téléchargement",
     downloadFailed: "Le téléchargement a échoué.", protected: "Protégée",
     drmManifest: "Le manifeste de cette source est chiffré par DRM.", downloadConvert: "Télécharger et convertir en MP4",
-    download4k: "Télécharger en 4K et convertir en MP4",
+    download4k: "Télécharger en MKV et convertir en MP4",
+    cancelDownload: "Annuler", cancelling: "Annulation…", conversionStage: "Conversion",
+    unknownQuality: "Qualité inconnue",
     confirm4k: "ClipFlow va télécharger le flux 4K en MKV, puis le convertir en MP4. La conversion conserve la résolution 4K et peut prendre du temps. Continuer ?",
     send: "Envoi…", unavailable: "ClipFlow est indisponible.", tf1Preparing: "Préparation automatique du flux TF1…",
     startedBackground: "Téléchargement démarré en arrière-plan.", inProgress: "En cours",
@@ -88,7 +90,9 @@ const UI_TEXT = {
     downloadCancelled: "Download cancelled", downloadError: "Download failed",
     downloadFailed: "The download failed.", protected: "Protected",
     drmManifest: "This source manifest is DRM-encrypted.", downloadConvert: "Download and convert to MP4",
-    download4k: "Download in 4K and convert to MP4",
+    download4k: "Download as MKV and convert to MP4",
+    cancelDownload: "Cancel", cancelling: "Cancelling…", conversionStage: "Conversion",
+    unknownQuality: "Unknown quality",
     confirm4k: "ClipFlow will download the 4K stream as MKV, then convert it to MP4. Conversion keeps the 4K resolution and may take time. Continue?",
     send: "Sending…", unavailable: "ClipFlow is unavailable.", tf1Preparing: "Automatically preparing the TF1 stream…",
     startedBackground: "Download started in the background.", inProgress: "In progress",
@@ -117,10 +121,8 @@ const status = document.getElementById("status");
 const videos = document.getElementById("videos");
 const rescan = document.getElementById("rescan");
 const progressSection = document.getElementById("download-progress");
-const progressLabel = document.getElementById("progress-label");
-const progressDetail = document.getElementById("progress-detail");
-const progressPercent = document.getElementById("progress-percent");
-const progressFill = document.getElementById("progress-fill");
+const progressTemplate = document.getElementById("progress-template");
+const displayedJobs = new Map();
 const checkUpdate = document.getElementById("check-update");
 const updateStatus = document.getElementById("update-status");
 const bridgeUpdateStatus = document.getElementById("bridge-update-status");
@@ -129,9 +131,6 @@ let bridgeUpdate = null;
 let bridgeFeedback = "";
 let bridgeRequest = 0;
 const extensionVersion = document.getElementById("extension-version");
-let displayedProgress = 0;
-let progressAnimation = null;
-let progressPoll = null;
 let availableUpdate = null;
 let lastUpdateResponse = null;
 let pending4kProbe = Promise.resolve();
@@ -561,6 +560,7 @@ async function detectVideosOnPage(uiLanguage = "fr") {
       label: label || title || copy.detectedVideo,
       detail: detail || resolved.hostname,
       kind,
+      height: Number(options.height) || 0,
       pageFallback: Boolean(options.pageFallback),
       priority: Number(options.priority) || 0,
       playerKey: options.playerKey || "",
@@ -694,6 +694,8 @@ async function detectVideosOnPage(uiLanguage = "fr") {
       add(source, label, isSubstackMp4 ? `${dimensions} · ${copy.substackSource}` : `${dimensions} · ${copy.htmlPlayer}`, {
         priority: isSubstackMp4 ? 130 : 100,
         playerKey,
+        height: source === video.currentSrc && ["MP4", "WEBM", "MKV"].includes(classify(source))
+          ? video.videoHeight : 0,
         source: isSubstackMp4 ? "substack" : "player",
         // A URL carried by a real <video> element is a complete source for
         // progressive players such as SeeArtTV. Without this hint, the filter
@@ -921,80 +923,99 @@ function setStatus(text, kind = "normal") {
   status.dataset.kind = kind;
 }
 
-function animateProgress(target) {
-  const safeTarget = Math.max(1, Math.min(100, Math.round(Number(target) || 1)));
-  if (safeTarget <= displayedProgress) {
-    progressPercent.textContent = `${displayedProgress} %`;
-    progressFill.style.width = `${displayedProgress}%`;
-    return;
-  }
-  if (progressAnimation) clearInterval(progressAnimation);
-  progressAnimation = setInterval(() => {
-    displayedProgress = Math.min(safeTarget, displayedProgress + 1);
-    progressPercent.textContent = `${displayedProgress} %`;
-    progressFill.style.width = `${displayedProgress}%`;
-    if (displayedProgress >= safeTarget) {
-      clearInterval(progressAnimation);
-      progressAnimation = null;
-    }
-  }, 24);
-}
+function showProgress(job, button = null, feedback = null) {
+  if (!job.jobId || displayedJobs.has(job.jobId)) return;
+  const card = progressTemplate.content.firstElementChild.cloneNode(true);
+  const label = card.querySelector(".progress-label");
+  const detail = card.querySelector(".progress-detail");
+  const percent = card.querySelector(".progress-percent");
+  const fill = card.querySelector(".progress-fill");
+  const cancel = card.querySelector(".cancel-download");
+  const destination = t("toFolder", { folder: job.destinationLabel || t("downloads") });
+  let cancelRequested = false;
+  let cancellationError = "";
+  let terminal = false;
 
-function showProgress(jobId, tabId, destinationLabel = t("downloads"), button = null, feedback = null) {
-  if (!jobId || !Number.isInteger(Number(tabId))) return;
+  for (const [id, previous] of displayedJobs) {
+    if (previous.terminal) {
+      previous.card.remove();
+      displayedJobs.delete(id);
+    }
+  }
+  const view = { card, terminal: false };
+  displayedJobs.set(job.jobId, view);
+  progressSection.append(card);
   progressSection.hidden = false;
-  progressLabel.textContent = t("toFolder", { folder: destinationLabel });
-  progressDetail.textContent = t("preparing");
-  displayedProgress = Math.max(1, displayedProgress);
-  progressPercent.textContent = `${displayedProgress} %`;
-  progressFill.style.width = `${displayedProgress}%`;
-  animateProgress(displayedProgress);
-  if (progressPoll) clearTimeout(progressPoll);
+
+  function render(response) {
+    const complete = response.state === "complete";
+    const cancelled = response.state === "cancelled";
+    const failed = response.state === "error";
+    terminal = complete || cancelled || failed;
+    view.terminal = terminal;
+    const progress = complete ? 100 : Math.max(0, Math.min(99, Math.round(Number(response.progress) || 0)));
+    card.classList.toggle("conversion-starting", response.phase === "conversion" && !terminal && progress === 0);
+    if (complete) label.textContent = t("downloadComplete");
+    else if (cancelled) label.textContent = t("downloadCancelled");
+    else if (failed) label.textContent = t("downloadError");
+    else if (response.phase === "conversion") {
+      label.textContent = job.title ? `${t("conversionStage")} · ${job.title}` : t("conversionStage");
+    }
+    else label.textContent = job.title || destination;
+    detail.textContent = cancellationError || response.message || t("preparing");
+    percent.textContent = `${progress} %`;
+    fill.style.width = `${progress}%`;
+    cancel.hidden = terminal || response.state === "unknown" || response.phase === "import";
+    cancel.disabled = cancelRequested;
+    cancel.textContent = t(cancelRequested ? "cancelling" : "cancelDownload");
+
+    if (terminal && button) {
+      button.disabled = complete;
+      button.textContent = complete ? t("complete") : t("retry");
+    }
+    if (terminal && feedback) {
+      feedback.dataset.kind = failed ? "error" : "success";
+      feedback.textContent = complete ? t("fileReady") : (response.message || label.textContent);
+    }
+  }
+
+  cancel.addEventListener("click", async () => {
+    cancelRequested = true;
+    cancel.disabled = true;
+    cancel.textContent = t("cancelling");
+    cancellationError = "";
+    try {
+      const result = await runtimeMessage({
+        type: "cancel_download", jobId: job.jobId, tabId: job.tabId, language: activeLanguage(),
+      });
+      cancelRequested = result.requested === true;
+    } catch (error) {
+      cancellationError = error.message;
+      cancelRequested = false;
+    }
+    cancel.disabled = cancelRequested;
+    cancel.textContent = t(cancelRequested ? "cancelling" : "cancelDownload");
+  });
 
   const poll = async () => {
     try {
-      const response = await runtimeMessage({ type: "download_status", jobId, tabId: Number(tabId), language: activeLanguage() });
-      animateProgress(response.progress);
-      progressDetail.textContent = response.message || t("downloading");
-      if (response.state === "complete") {
-        animateProgress(100);
-        progressLabel.textContent = t("downloadComplete");
-        if (button) button.textContent = t("complete");
-        if (feedback) {
-          feedback.dataset.kind = "success";
-          feedback.textContent = t("fileReady");
-        }
-        return;
-      }
-      if (response.state === "error" || response.state === "cancelled") {
-        progressLabel.textContent = response.state === "cancelled" ? t("downloadCancelled") : t("downloadError");
-        if (button) {
-          button.disabled = false;
-          button.textContent = t("retry");
-        }
-        if (feedback) {
-          feedback.dataset.kind = "error";
-          feedback.textContent = response.message || t("downloadFailed");
-        }
-        return;
-      }
-      progressPoll = setTimeout(poll, 700);
+      const response = await runtimeMessage({
+        type: "download_status", jobId: job.jobId, tabId: job.tabId, language: activeLanguage(),
+      });
+      render(response);
+      if (!terminal) setTimeout(poll, 700);
     } catch (error) {
-      progressDetail.textContent = error.message || t("stateUnavailable");
-      progressPoll = setTimeout(poll, 1200);
+      detail.textContent = error.message || t("stateUnavailable");
+      setTimeout(poll, 1200);
     }
   };
-  poll();
+  render(job);
+  if (!terminal) poll();
 }
 
 async function restoreActiveProgress(tabId) {
-  const response = await runtimeMessage({ type: "get_active_job", tabId, language: activeLanguage() }).catch(() => null);
-  const job = response?.job;
-  if (!job?.jobId) return;
-  if (Date.now() - Number(job.updatedAt || 0) > 24 * 60 * 60 * 1000) return;
-  showProgress(job.jobId, tabId, job.destinationLabel);
-  animateProgress(job.progress || 1);
-  if (job.message) progressDetail.textContent = job.message;
+  const response = await runtimeMessage({ type: "get_active_jobs", tabId, language: activeLanguage() }).catch(() => null);
+  response?.jobs?.forEach((job) => showProgress(job));
 }
 
 function requiresWebmConversion(video) {
@@ -1062,9 +1083,18 @@ async function enrichWeakThumbnails(tab, selectedVideos) {
   }));
 }
 
-function createVideoCard(video, index) {
+function qualityLabel(height) {
+  if (!Number.isInteger(height) || height <= 0) return t("unknownQuality");
+  if (height === 2160) return "4K";
+  if (height === 4320) return "8K";
+  return `${height}p`;
+}
+
+function createVideoCard(video, index, initialQuality = "best") {
+  let downloadQuality = initialQuality;
   const card = document.createElement("article");
   card.className = "video-card";
+  card.dataset.quality = initialQuality;
   let thumbnail = null;
   if (video.thumbnail) {
     thumbnail = document.createElement("img");
@@ -1084,21 +1114,27 @@ function createVideoCard(video, index) {
   heading.className = "video-heading";
   const kind = document.createElement("span");
   kind.className = "video-kind";
-  kind.textContent = video.kind === "VIDÉO" ? t("kindVideo") : (video.kind || t("kindVideo"));
+  kind.textContent = qualityLabel(video.height);
   const title = document.createElement("div");
   title.className = "video-title";
   title.textContent = video.label;
   heading.append(kind, title);
   const detail = document.createElement("div");
   detail.className = "video-detail";
-  detail.textContent = video.detail;
+  const videoFormat = document.createElement("span");
+  videoFormat.className = "format-video";
+  videoFormat.textContent = initialQuality === "4k-mkv" ? "MKV → MP4" : "MP4";
+  const audioFormat = document.createElement("span");
+  audioFormat.className = "format-audio";
+  audioFormat.textContent = "MP3";
+  detail.append(videoFormat, audioFormat);
   const button = document.createElement("button");
   button.type = "button";
   button.className = "download";
   const actions = document.createElement("div");
   actions.className = "video-actions";
   actions.append(button);
-  const defaultButtonLabel = requiresWebmConversion(video)
+  const defaultButtonLabel = initialQuality === "4k-mkv" ? t("download4k") : requiresWebmConversion(video)
     ? t("downloadConvert")
     : t("download");
   button.textContent = defaultButtonLabel;
@@ -1142,7 +1178,10 @@ function createVideoCard(video, index) {
         : t("startedBackground");
       if (response.jobId) {
         button.textContent = t("inProgress");
-        showProgress(response.jobId, page.tabId, response.destinationLabel, button, feedback);
+        showProgress({
+          ...response, tabId: page.tabId, title: video.label,
+          state: "queued", phase: "download", progress: 1, message: t("preparing"),
+        }, button, feedback);
       } else {
         button.disabled = false;
         button.textContent = defaultButtonLabel;
@@ -1155,25 +1194,26 @@ function createVideoCard(video, index) {
     }
   }
   button.addEventListener("click", () => {
-    if (requiresWebmConversion(video) && !window.confirm(t("webmConfirm"))) return;
-    startDownload(button, settings.audioOnly ? "audio" : "best", defaultButtonLabel);
+    if (downloadQuality === "4k-mkv") {
+      if (!settings.audioOnly && window.confirm(t("confirm4k"))) startDownload(button, downloadQuality, defaultButtonLabel);
+      return;
+    }
+    if (!settings.audioOnly && requiresWebmConversion(video) && !window.confirm(t("webmConfirm"))) return;
+    startDownload(button, settings.audioOnly ? "audio" : downloadQuality, defaultButtonLabel);
   });
 
-  if (["PAGE", "PLAYER", "DASH", "HLS", "MKV"].includes(video.kind)) {
+  if (initialQuality === "best") {
     pending4kProbe = pending4kProbe
       .then(async () => {
         if (!card.isConnected || page !== activePage) return;
-        const result = await runtimeMessage({ type: "probe_4k_mkv", url: video.url, referer, language: activeLanguage() });
-        if (!result?.available || !card.isConnected || page !== activePage) return;
-        const option = document.createElement("button");
-        option.type = "button";
-        option.className = "download download-4k";
-        const label = t("download4k");
-        option.textContent = label;
-        option.addEventListener("click", () => {
-          if (!settings.audioOnly && window.confirm(t("confirm4k"))) startDownload(option, "4k-mkv", label);
-        });
-        actions.append(option);
+        const result = await runtimeMessage({ type: "probe_media_formats", url: video.url, referer, language: activeLanguage() });
+        if (!card.isConnected || page !== activePage) return;
+        const height = result.hdHeight || result.standardHeight || video.height;
+        kind.textContent = qualityLabel(height);
+        if (result.hdHeight && result.hdHeight !== result.standardHeight) downloadQuality = "hd";
+        if (result.mkvHeight !== 2160) return;
+        card.classList.toggle("no-standard", result.standardAvailable === false);
+        card.after(createVideoCard({ ...video, height: result.mkvHeight }, index, "4k-mkv"));
       })
       .catch(() => {});
   }
@@ -1190,10 +1230,10 @@ async function scan() {
   rescan.disabled = true;
   try {
     const [tab] = await browserApi.tabs.query({ active: true, currentWindow: true });
+    if (Number.isInteger(tab?.id)) restoreActiveProgress(tab.id);
     if (!tab?.id || !/^https?:/i.test(tab.url || "")) {
       throw new Error(t("chromePageUnsupported"));
     }
-    restoreActiveProgress(tab.id);
     let results;
     try {
       results = await browserApi.scripting.executeScript({
@@ -1281,7 +1321,6 @@ async function scan() {
       label: cleanMediaTitle(multipleVideos
         ? (video.label || `${t("video")} ${index + 1}`)
         : (mediaTitle || video.label)),
-      detail: `${video.kind === "VIDÉO" ? t("kindVideo") : video.kind} · ${t("bestSource")}`,
     }));
     await enrichWeakThumbnails(tab, selectedVideos);
     activePage = {
