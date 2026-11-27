@@ -1233,7 +1233,7 @@ class DownloadWorker:
                     self.events.put(("phase", "Page reçue · analyse de la vidéo…"))
                 elif "Downloading" in line and "player API" in line:
                     self.events.put(("phase", "Vérification de la vidéo auprès du site…"))
-                elif "Destination:" in line:
+                elif line.startswith("[download] Destination:"):
                     self._download_component += 1
                     self.events.put(("phase", "Flux sélectionnés · téléchargement…"))
                 elif line.startswith("[Merger]"):

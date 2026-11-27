@@ -43,6 +43,30 @@ from app import (
 
 
 class TubeSaveTests(unittest.TestCase):
+    def test_conversion_destination_is_reported_as_conversion(self):
+        events = queue.Queue()
+        worker = DownloadWorker(["yt-dlp", "https://example.com/video"], events, {}, None)
+        with patch("app.subprocess.Popen") as popen, patch("app.threading.Thread"):
+            process = popen.return_value
+            process.stdout = [
+                "[download] Destination: video.webm",
+                "[progress]100%|1MiB/s|00:00",
+                '[Merger] Merging formats into "video.mkv"',
+                "[VideoConvertor] Converting video from mkv to mp4; Destination: video.mp4",
+                "[done]video.mp4",
+            ]
+            process.wait.return_value = 0
+            worker._download_once()
+        self.assertEqual(
+            [value for event, value in list(events.queue) if event == "phase"],
+            [
+                "Connexion au site vidéo…",
+                "Flux sélectionnés · téléchargement…",
+                "Assemblage audio et vidéo sans réencodage…",
+                "Conversion de la vidéo en MP4…",
+            ],
+        )
+
     def test_opt_in_4k_uses_only_2160p_and_a_distinct_mp4(self):
         url = "https://www.youtube.com/watch?v=example"
         command = build_download_command(

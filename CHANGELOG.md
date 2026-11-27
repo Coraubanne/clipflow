@@ -2,6 +2,10 @@
 
 All notable user-facing changes are documented here.
 
+## 2.17.1 — 2026-11-27
+
+- Show the MP4 conversion stage in the extension after the download finishes.
+
 ## 2.17.0 — 2026-11-27
 
 - Added an optional 4K download for MKV sources and compatible split streams. ClipFlow converts the result to a 2160p MP4 after confirmation.
