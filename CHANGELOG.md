@@ -2,6 +2,10 @@
 
 All notable user-facing changes are documented here.
 
+## 2.16.3 — 2026-11-27
+
+- Version-only release to test the updater.
+
 ## 2.16.2 — 2026-11-26
 
 - Fixed an encoding error during automatic update on Macs with binary application metadata.
