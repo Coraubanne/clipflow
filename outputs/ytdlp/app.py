@@ -95,7 +95,6 @@ PROFILES = (
     QualityProfile("Meilleur MP4 compatible", mode="compatible"),
     QualityProfile("Audio uniquement · MP3", audio_only=True),
 )
-FOUR_K_MKV_PROFILE = QualityProfile("4K MKV vers MP4", mode="4k-mkv")
 FOUR_K_LOSSLESS_PROFILE = QualityProfile("4K MP4 sans perte", mode="4k-lossless")
 HD_PROFILE = QualityProfile("MP4 jusqu’en 1080p", max_height=1080, mode="compatible")
 EXTENSION_PROFILE_BY_KEY = {
@@ -105,7 +104,7 @@ EXTENSION_PROFILE_BY_KEY = {
     "720": PROFILES[0].label,
     "480": PROFILES[0].label,
     "audio": PROFILES[1].label,
-    "4k-mkv": FOUR_K_MKV_PROFILE.label,
+    "4k-mkv": FOUR_K_LOSSLESS_PROFILE.label,
     "4k-lossless": FOUR_K_LOSSLESS_PROFILE.label,
     "hd": HD_PROFILE.label,
 }
@@ -863,7 +862,9 @@ def direct_mkv_is_4k(url: str, ffmpeg: Path, referer: str | None) -> bool:
 
 def mkv_4k_selector() -> str:
     split_video = "bv[height=2160][ext~='^(webm|mp4|mkv)$'][vcodec!^=avc1]"
+    original_aac = "ba[acodec~='^(aac$|mp4a[.])'][format_note*=original]"
     return (
+        f"{split_video}+{original_aac}/"
         f"{split_video}+ba[format_note*=original]/"
         f"b[height=2160][ext=mkv][format_note*=original]/"
         f"{split_video}+ba/b[height=2160][ext=mkv]"
@@ -1045,30 +1046,25 @@ def build_download_command(
         "--output",
         output_template,
     ]
-    mkv_conversion = profile.mode in {"4k-mkv", "4k-lossless"}
-    if mkv_conversion or profile.max_height:
+    lossless_4k = profile.mode == "4k-lossless"
+    if lossless_4k or profile.max_height:
         # Resolution-specific downloads must not reuse an existing standard MP4.
-        resolution = "4K" if mkv_conversion else "%(height)sp"
-        if profile.mode == "4k-lossless":
-            resolution = "4K sans perte"
+        resolution = "4K sans perte" if lossless_4k else "%(height)sp"
         command[-1] = output_template.removesuffix(".%(ext)s") + f" {resolution}.%(ext)s"
     if ffmpeg:
         command.extend(["--ffmpeg-location", str(ffmpeg)])
     if referer:
         command.extend(["--referer", referer])
 
-    if mkv_conversion:
-        command.extend([*mkv_4k_format_args(url), "--recode-video", "mp4"])
-        if prefix[-1] == "--tubesave-yt-dlp":
-            postprocessor = "ClipFlow4K:lossless=1" if profile.mode == "4k-lossless" else "ClipFlow4K"
-            command.extend(["--use-postprocessor", postprocessor, "--postprocessor-args", "ClipFlow4K+ffmpeg_o:-movflags +faststart"])
-        elif profile.mode == "4k-lossless":
+    if lossless_4k:
+        if prefix[-1] != "--tubesave-yt-dlp":
             raise ValueError("Le moteur ClipFlow est nécessaire pour la conversion sans perte.")
-        else:
-            command.extend([
-                "--postprocessor-args",
-                "VideoConvertor+ffmpeg_o:-c:v libx264 -preset veryfast -crf 17 -pix_fmt yuv420p -c:a aac -b:a 256k -movflags +faststart",
-            ])
+        # The finished MP4 is used locally. Skip the second pass that prepares it for streaming.
+        command.extend([
+            *mkv_4k_format_args(url), "--recode-video", "mp4",
+            "--use-postprocessor", "ClipFlow4K",
+            "--postprocessor-args", "ClipFlow4K+ffmpeg_o:-movflags -faststart",
+        ])
     elif profile.audio_only:
         audio_selector = (
             "ba[format_note*=original]/ba/b"
@@ -1693,7 +1689,7 @@ class TubeSaveApp(tk.Tk):
         self.request_profile = PROFILES[0]
         url = self.url.get().strip()
         direct_4k_mkv = None
-        if profile.mode in {"4k-mkv", "4k-lossless"} and is_direct_mkv_url(url):
+        if profile.mode == "4k-lossless" and is_direct_mkv_url(url):
             direct_4k_mkv = (url, self.ffmpeg, self.request_referer)
         try:
             command = build_download_command(
@@ -1781,7 +1777,7 @@ class TubeSaveApp(tk.Tk):
                     self.folder.set(str(destination))
                     self.audio_only.set(quality == PROFILES[1].label)
                     self.request_profile = next(
-                        (profile for profile in (FOUR_K_MKV_PROFILE, FOUR_K_LOSSLESS_PROFILE, HD_PROFILE)
+                        (profile for profile in (FOUR_K_LOSSLESS_PROFILE, HD_PROFILE)
                          if profile.label == quality),
                         PROFILES[0],
                     )
@@ -2065,7 +2061,7 @@ def main() -> int:
             os.environ["YTDLP_NO_PLUGINS"] = "1"
         import yt_dlp
 
-        if any(arg == "ClipFlow4K" or arg.startswith("ClipFlow4K:") for arg in sys.argv[2:]):
+        if "ClipFlow4K" in sys.argv[2:]:
             from clipflow_ffmpeg import register_clipflow_4k
 
             register_clipflow_4k()

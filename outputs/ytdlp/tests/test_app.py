@@ -8,7 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app import (
-    FOUR_K_MKV_PROFILE,
+    EXTENSION_PROFILE_BY_KEY,
+    FOUR_K_LOSSLESS_PROFILE,
     PROFILES,
     DownloadWorker,
     acquire_agent_lock,
@@ -68,10 +69,11 @@ class TubeSaveTests(unittest.TestCase):
             ],
         )
 
-    def test_opt_in_4k_uses_only_2160p_and_a_distinct_mp4(self):
+    def test_4k_uses_only_2160p_and_a_distinct_lossless_mp4(self):
         url = "https://www.youtube.com/watch?v=example"
         command = build_download_command(
-            ["yt-dlp"], url, Path("/tmp"), FOUR_K_MKV_PROFILE, Path("/ffmpeg"), None,
+            ["ClipFlow", "--tubesave-yt-dlp"], url, Path("/tmp"),
+            FOUR_K_LOSSLESS_PROFILE, Path("/ffmpeg"), None,
         )
         selector = command[command.index("--format") + 1]
         for alternative in selector.split("/"):
@@ -79,22 +81,21 @@ class TubeSaveTests(unittest.TestCase):
         self.assertIn("format_note*=original", selector.split("/")[0])
         self.assertEqual(command[command.index("--merge-output-format") + 1], "mkv")
         self.assertEqual(command[command.index("--recode-video") + 1], "mp4")
-        self.assertTrue(command[command.index("--output") + 1].endswith(" 4K.%(ext)s"))
+        self.assertEqual(command[command.index("--use-postprocessor") + 1], "ClipFlow4K")
+        self.assertIn("ClipFlow4K+ffmpeg_o:-movflags -faststart", command)
+        self.assertTrue(command[command.index("--output") + 1].endswith(" 4K sans perte.%(ext)s"))
+        self.assertEqual(EXTENSION_PROFILE_BY_KEY["4k-mkv"], EXTENSION_PROFILE_BY_KEY["4k-lossless"])
 
     def test_mp4_copies_only_tracks_known_to_be_compatible(self):
-        from clipflow_ffmpeg import EDITABLE_AAC, EDITABLE_H264, mp4_track_options
+        from clipflow_ffmpeg import lossless_track_options
 
         aac = "  Stream #0:1(fra): Audio: aac (LC), 48000 Hz"
-        opus = "  Stream #0:1(fra): Audio: opus, 48000 Hz"
         avc = "  Stream #0:0: Video: h264 (High), yuv420p(progressive), 3840x2160"
         hevc = "  Stream #0:0: Video: hevc (Main 10), yuv420p10le(tv), 3840x2160"
-        vp9 = "  Stream #0:0: Video: vp9 (Profile 0), yuv420p, 3840x2160"
-        self.assertEqual(mp4_track_options(f"{avc}\n{aac}"), (("-c:v", "copy"), ("-c:a", "copy")))
-        self.assertEqual(mp4_track_options(f"{hevc}\n{opus}"), (("-c:v", "copy", "-tag:v", "hvc1"), EDITABLE_AAC))
-        self.assertEqual(mp4_track_options(f"{vp9}\n{aac}"), (EDITABLE_H264, ("-c:a", "copy")))
+        self.assertEqual(lossless_track_options(f"{avc}\n{aac}"), ("-c:v", "copy", "-c:a", "copy"))
+        self.assertEqual(lossless_track_options(f"{hevc}\n{aac}"), ("-c:v", "copy", "-tag:v", "hvc1", "-c:a", "copy"))
 
     def test_lossless_4k_rejects_tracks_requiring_a_lossy_fallback(self):
-        from app import FOUR_K_LOSSLESS_PROFILE
         from clipflow_ffmpeg import FFmpegPostProcessorError, LOSSLESS_H264, lossless_track_options
 
         video = "  Stream #0:0: Video: vp9 (Profile 0), yuv420p(tv, bt709), 3840x2160"
@@ -107,12 +108,6 @@ class TubeSaveTests(unittest.TestCase):
         ):
             with self.assertRaises(FFmpegPostProcessorError):
                 lossless_track_options(unsupported)
-        command = build_download_command(
-            ["ClipFlow", "--tubesave-yt-dlp"], "https://example.com/source.mkv", Path("/tmp"),
-            FOUR_K_LOSSLESS_PROFILE, Path("/ffmpeg"), None,
-        )
-        self.assertIn("ClipFlow4K:lossless=1", command)
-        self.assertTrue(command[command.index("--output") + 1].endswith(" 4K sans perte.%(ext)s"))
 
     def test_4k_probe_rejects_lower_resolution_and_direct_mp4(self):
         url = "https://www.youtube.com/watch?v=example"

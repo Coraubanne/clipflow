@@ -28,7 +28,7 @@ L’option GitHub **Code → Download ZIP** télécharge le code source. Pour in
 
 ClipFlow cherche la meilleure qualité qu’il peut livrer en MP4, jusqu’en 4K lorsqu’un flux compatible est disponible. Il privilégie la piste audio d’origine si la source l’identifie et demande confirmation avant de convertir un WebM détecté. Les fichiers sont nommés sur le modèle `Chaîne — Titre de la vidéo [identifiant].mp4`.
 
-Les cartes affichent la résolution détectée. Quand ClipFlow trouve un flux 4K en MKV ou des pistes 4K à assembler en MKV, il propose une carte distincte pour télécharger et convertir la vidéo en MP4 2160p. Le fichier final porte le suffixe `4K`. Le panneau de suivi affiche la progression de la conversion et permet d’annuler un travail en attente ou en cours.
+Les cartes affichent la résolution détectée. Pour un flux 4K en MKV ou des pistes 4K à assembler en MKV, la carte 4K propose un MP4 2160p sans perte. ClipFlow copie les pistes compatibles et encode l’image sans perte si nécessaire. Le fichier peut être plus volumineux et porte le suffixe `4K sans perte`. Le panneau de suivi affiche la progression de la conversion et permet d’annuler un travail en attente ou en cours.
 
 La compatibilité dépend du lecteur et des formats proposés par le site. Utilisez ClipFlow pour les médias que vous êtes autorisé à télécharger. Les flux protégés par DRM sont incompatibles. [Conditions d’utilisation](LEGAL.fr.md)
 

@@ -2,6 +2,11 @@
 
 All notable user-facing changes are documented here.
 
+## 2.19.1 — 2026-11-27
+
+- Made 4K MKV-to-MP4 conversion lossless by default with a single download button.
+- Copy compatible tracks directly and skip the extra streaming preparation pass on the local MP4.
+
 ## 2.19.0 — 2026-11-27
 
 - Added an optional 4K lossless MP4 conversion for compatible sources when Premiere Pro is the destination.

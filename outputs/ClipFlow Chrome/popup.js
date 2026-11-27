@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.19.0";
+const EXPECTED_EXTENSION_VERSION = "2.19.1";
 const browserApi = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
@@ -47,12 +47,10 @@ const UI_TEXT = {
     downloadCancelled: "Téléchargement annulé", downloadError: "Échec du téléchargement",
     downloadFailed: "Le téléchargement a échoué.", protected: "Protégée",
     drmManifest: "Le manifeste de cette source est chiffré par DRM.", downloadConvert: "Télécharger et convertir en MP4",
-    download4k: "Télécharger en MKV et convertir en MP4",
-    lossless4k: "Sans perte pour Premiere · fichier volumineux",
-    confirmLossless4k: "ClipFlow va créer un MP4 4K sans perte puis l’importer dans Premiere Pro. Le fichier peut être beaucoup plus volumineux. Continuer ?",
+    download4k: "Télécharger le MP4 4K sans perte",
+    losslessFile: "MKV → MP4 · fichier parfois volumineux",
     cancelDownload: "Annuler", cancelling: "Annulation…", conversionStage: "Conversion",
     unknownQuality: "Qualité inconnue",
-    confirm4k: "ClipFlow va télécharger le flux 4K en MKV, puis le convertir en MP4. La conversion conserve la résolution 4K et peut prendre du temps. Continuer ?",
     send: "Envoi…", unavailable: "ClipFlow est indisponible.", tf1Preparing: "Préparation automatique du flux TF1…",
     startedBackground: "Téléchargement démarré en arrière-plan.", inProgress: "En cours",
     chromePageUnsupported: "Cette page du navigateur ne peut pas être analysée.", pageNoResponse: "La page n’a pas répondu à l’analyse.",
@@ -92,12 +90,10 @@ const UI_TEXT = {
     downloadCancelled: "Download cancelled", downloadError: "Download failed",
     downloadFailed: "The download failed.", protected: "Protected",
     drmManifest: "This source manifest is DRM-encrypted.", downloadConvert: "Download and convert to MP4",
-    download4k: "Download as MKV and convert to MP4",
-    lossless4k: "Lossless for Premiere · large file",
-    confirmLossless4k: "ClipFlow will create a lossless 4K MP4 and import it into Premiere Pro. The file can be much larger. Continue?",
+    download4k: "Download lossless 4K MP4",
+    losslessFile: "MKV → MP4 · file can be large",
     cancelDownload: "Cancel", cancelling: "Cancelling…", conversionStage: "Conversion",
     unknownQuality: "Unknown quality",
-    confirm4k: "ClipFlow will download the 4K stream as MKV, then convert it to MP4. Conversion keeps the 4K resolution and may take time. Continue?",
     send: "Sending…", unavailable: "ClipFlow is unavailable.", tf1Preparing: "Automatically preparing the TF1 stream…",
     startedBackground: "Download started in the background.", inProgress: "In progress",
     chromePageUnsupported: "This browser page cannot be analyzed.", pageNoResponse: "The page did not respond to analysis.",
@@ -304,7 +300,6 @@ async function saveSettings() {
 }
 
 async function saveDestination() {
-  videos.classList.toggle("premiere-output", settings.destination === "premiere");
   await saveSettings();
   await runtimeMessage({ type: "sync_bridge_destination", language: activeLanguage() })
     .catch(() => {});
@@ -1141,7 +1136,7 @@ function createVideoCard(video, index, initialQuality = "best") {
   detail.className = "video-detail";
   const videoFormat = document.createElement("span");
   videoFormat.className = "format-video";
-  videoFormat.textContent = initialQuality === "4k-mkv" ? "MKV → MP4" : "MP4";
+  videoFormat.textContent = initialQuality === "4k-mkv" ? t("losslessFile") : "MP4";
   const audioFormat = document.createElement("span");
   audioFormat.className = "format-audio";
   audioFormat.textContent = "MP3";
@@ -1152,17 +1147,6 @@ function createVideoCard(video, index, initialQuality = "best") {
   const actions = document.createElement("div");
   actions.className = "video-actions";
   actions.append(button);
-  let lossless = null;
-  if (initialQuality === "4k-mkv") {
-    const option = document.createElement("label");
-    option.className = "premiere-lossless";
-    lossless = document.createElement("input");
-    lossless.type = "checkbox";
-    const caption = document.createElement("span");
-    caption.textContent = t("lossless4k");
-    option.append(lossless, caption);
-    actions.append(option);
-  }
   const defaultButtonLabel = initialQuality === "4k-mkv" ? t("download4k") : requiresWebmConversion(video)
     ? t("downloadConvert")
     : t("download");
@@ -1224,11 +1208,7 @@ function createVideoCard(video, index, initialQuality = "best") {
   }
   button.addEventListener("click", () => {
     if (downloadQuality === "4k-mkv") {
-      const useLossless = settings.destination === "premiere" && lossless?.checked;
-      const confirmation = useLossless ? "confirmLossless4k" : "confirm4k";
-      if (!settings.audioOnly && window.confirm(t(confirmation))) {
-        startDownload(button, useLossless ? "4k-lossless" : downloadQuality, defaultButtonLabel);
-      }
+      if (!settings.audioOnly) startDownload(button, "4k-lossless", defaultButtonLabel);
       return;
     }
     if (!settings.audioOnly && requiresWebmConversion(video) && !window.confirm(t("webmConfirm"))) return;

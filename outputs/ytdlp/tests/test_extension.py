@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.19.0")
+        self.assertEqual(manifest["version"], "2.19.1")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,7 +27,7 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.19.0"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.19.1"', source)
         self.assertIn("browserApi.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
@@ -113,8 +113,8 @@ class ChromeExtensionTests(unittest.TestCase):
         probe = source.index('type: "probe_media_formats"')
         guard = source.index("result.mkvHeight !== 2160", probe)
         self.assertIn('card.after(createVideoCard({ ...video, height: result.mkvHeight }, index, "4k-mkv"))', source[guard:])
-        self.assertIn('window.confirm(t(confirmation))', source[:probe])
-        self.assertIn('settings.destination === "premiere" && lossless?.checked', source[:probe])
+        self.assertIn('startDownload(button, "4k-lossless", defaultButtonLabel)', source[:probe])
+        self.assertNotIn("premiere-lossless", source)
 
     def test_completion_sound_can_be_disabled_and_is_remembered(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
