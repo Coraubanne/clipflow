@@ -2,7 +2,7 @@ const NATIVE_HOST = "fr.tubesave.chrome";
 const browserApi = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const SETTINGS_VERSION = 7;
-const QUALITY_KEYS = new Set(["best", "audio", "1080", "720", "480"]);
+const QUALITY_KEYS = new Set(["best", "audio", "1080", "720", "480", "4k-mkv"]);
 const DESTINATION_KEYS = new Set(["downloads", "movies", "desktop", "custom", "premiere"]);
 const NETWORK_MEDIA_PREFIX = "tubeSaveNetworkMedia:";
 const NETWORK_MEDIA_TTL = 30 * 60 * 1000;
@@ -200,6 +200,7 @@ function networkMediaKind(url, contentType) {
   if (/\.mpd(?:$|[?#])/i.test(url) || /dash\+xml/i.test(mime)) return "DASH";
   if (/\.mp4(?:$|[?#])/i.test(url) || /^video\/mp4/i.test(mime)) return "MP4";
   if (/\.webm(?:$|[?#])/i.test(url) || /^video\/webm/i.test(mime)) return "WEBM";
+  if (/\.mkv(?:$|[?#])/i.test(url) || /^video\/x-matroska/i.test(mime)) return "MKV";
   if (/^video\//i.test(mime)) return "VIDÉO";
   // TF1 masque parfois le manifeste derrière une URL sans extension. Cette URL
   // reste directement exploitable par yt-dlp et redirige vers le flux signé.
@@ -517,6 +518,13 @@ async function handleMessage(message, sender) {
     await updateJobBadge(tabId, response);
     return response;
   }
+  if (message.type === "probe_4k_mkv") {
+    const url = normalizedWebUrl(message.url, backgroundText(language, "invalidVideo"));
+    const referer = message.referer
+      ? normalizedWebUrl(message.referer, backgroundText(language, "invalidReferer"))
+      : "";
+    return sendNativeMessage({ action: "probe_4k_mkv", url, referer, language });
+  }
   if (message.type !== "download") {
     throw new Error(backgroundText(language, "unknownAction"));
   }
@@ -526,7 +534,7 @@ async function handleMessage(message, sender) {
     ? normalizedWebUrl(message.referer, backgroundText(language, "invalidReferer"))
     : "";
   const requestedQuality = QUALITY_KEYS.has(message.quality) ? message.quality : "best";
-  const quality = requestedQuality === "audio" ? "audio" : "best";
+  const quality = ["audio", "4k-mkv"].includes(requestedQuality) ? requestedQuality : "best";
   const destination = DESTINATION_KEYS.has(message.destination)
     ? message.destination
     : "downloads";
@@ -559,7 +567,7 @@ async function handleMessage(message, sender) {
   try { refererUrl = referer ? new URL(referer) : null; } catch (_error) { refererUrl = null; }
   const isTf1Page = refererUrl && /(^|\.)tf1\.fr$/i.test(refererUrl.hostname);
   const isTf1Dash = isTf1Page && /(?:\.mpd(?:$|[?#])|vod-das\.|\.ism\/)/i.test(url);
-  if (isTf1Dash && Number.isInteger(tabId) && tabId >= 0) {
+  if (quality !== "4k-mkv" && isTf1Dash && Number.isInteger(tabId) && tabId >= 0) {
     await browserApi.storage.session.set({
       [tf1PendingKey(tabId)]: {
         nativeRequest,

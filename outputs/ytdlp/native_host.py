@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 
 MAX_MESSAGE_SIZE = 1024 * 1024
-QUALITY_KEYS = {"best", "audio", "1080", "720", "480"}
+QUALITY_KEYS = {"best", "audio", "1080", "720", "480", "4k-mkv"}
 DESTINATION_KEYS = {"downloads", "movies", "desktop", "custom", "premiere"}
 JOB_ID_LENGTH_LIMIT = 96
 PREMIERE_STATE_MAX_AGE_SECONDS = 15
@@ -33,6 +33,8 @@ ENGLISH_MESSAGES = {
     "Vérification de la vidéo auprès du site…": "Checking the video with the site…",
     "Flux sélectionnés · téléchargement…": "Streams selected · downloading…",
     "Assemblage audio et vidéo sans réencodage…": "Merging audio and video without re-encoding…",
+    "Conversion de la vidéo en MP4…": "Converting the video to MP4…",
+    "Impossible de confirmer la résolution 4K de cette source MKV.": "Could not verify the 4K resolution of this MKV source.",
     "Téléchargement annulé": "Download cancelled",
     "Le téléchargement n’a pas pu être terminé.": "The download could not be completed.",
     "Cette source est protégée par DRM.": "This source is DRM-protected.",
@@ -232,7 +234,8 @@ def validated_download_job(message: dict[str, object], home: Path | None = None)
     quality = message.get("quality", "best")
     if quality not in QUALITY_KEYS:
         raise ValueError("Qualité de téléchargement invalide.")
-    quality = "audio" if quality == "audio" else "best"
+    if quality in {"1080", "720", "480"}:
+        quality = "best"
     destination_key = message.get("destination", "downloads")
     premiere_project: Path | None = None
     premiere_bridge: Path | None = None
@@ -420,6 +423,14 @@ def handle_message(message: object) -> dict[str, object]:
     language = interface_language(message)
     if action == "download":
         return queue_download(message)
+    if action == "probe_4k_mkv":
+        url = message.get("url")
+        referer = message.get("referer")
+        if not is_supported_video_request_url(url) or (referer and not is_public_web_url(referer)):
+            return {"ok": True, "available": False}
+        from app import has_4k_mkv
+
+        return {"ok": True, "available": has_4k_mkv(str(url), str(referer) if referer else None)}
     if action == "status":
         return read_status(message)
     if action == "choose_folder":

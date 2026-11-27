@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.16.3";
+const EXPECTED_EXTENSION_VERSION = "2.17.0";
 const browserApi = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
@@ -47,6 +47,8 @@ const UI_TEXT = {
     downloadCancelled: "Téléchargement annulé", downloadError: "Échec du téléchargement",
     downloadFailed: "Le téléchargement a échoué.", protected: "Protégée",
     drmManifest: "Le manifeste de cette source est chiffré par DRM.", downloadConvert: "Télécharger et convertir en MP4",
+    download4k: "Télécharger en 4K et convertir en MP4",
+    confirm4k: "ClipFlow va télécharger le flux 4K en MKV, puis le convertir en MP4. La conversion conserve la résolution 4K et peut prendre du temps. Continuer ?",
     send: "Envoi…", unavailable: "ClipFlow est indisponible.", tf1Preparing: "Préparation automatique du flux TF1…",
     startedBackground: "Téléchargement démarré en arrière-plan.", inProgress: "En cours",
     chromePageUnsupported: "Cette page du navigateur ne peut pas être analysée.", pageNoResponse: "La page n’a pas répondu à l’analyse.",
@@ -86,6 +88,8 @@ const UI_TEXT = {
     downloadCancelled: "Download cancelled", downloadError: "Download failed",
     downloadFailed: "The download failed.", protected: "Protected",
     drmManifest: "This source manifest is DRM-encrypted.", downloadConvert: "Download and convert to MP4",
+    download4k: "Download in 4K and convert to MP4",
+    confirm4k: "ClipFlow will download the 4K stream as MKV, then convert it to MP4. Conversion keeps the 4K resolution and may take time. Continue?",
     send: "Sending…", unavailable: "ClipFlow is unavailable.", tf1Preparing: "Automatically preparing the TF1 stream…",
     startedBackground: "Download started in the background.", inProgress: "In progress",
     chromePageUnsupported: "This browser page cannot be analyzed.", pageNoResponse: "The page did not respond to analysis.",
@@ -130,6 +134,7 @@ let progressAnimation = null;
 let progressPoll = null;
 let availableUpdate = null;
 let lastUpdateResponse = null;
+let pending4kProbe = Promise.resolve();
 
 function activeLanguage() {
   if (settings.language === "fr" || settings.language === "en") return settings.language;
@@ -319,6 +324,7 @@ async function loadSettings() {
     settings.destinationPath = "";
   }
   audioOnly.checked = settings.audioOnly;
+  videos.classList.toggle("audio-only", settings.audioOnly);
   completionSound.checked = settings.completionSound;
   language.value = ["auto", "fr", "en"].includes(settings.language) ? settings.language : "auto";
   settings.language = language.value;
@@ -442,6 +448,7 @@ async function detectVideosOnPage(uiLanguage = "fr") {
     if (/\.mpd(?:$|[?#&])/i.test(decoded) || /(?:format|type)=mpd/i.test(decoded)) return "DASH";
     if (/\.mp4(?:$|[?#&])/i.test(decoded) || /(?:format|type)=mp4/i.test(decoded)) return "MP4";
     if (/\.webm(?:$|[?#&])/i.test(decoded)) return "WEBM";
+    if (/\.mkv(?:$|[?#&])/i.test(decoded)) return "MKV";
     if (/\.(?:m4v|mov|ogv)(?:$|[?#&])/i.test(decoded)) return "VIDÉO";
     if (/\.(?:m4a|mp3|aac|ogg|opus)(?:$|[?#&])/i.test(decoded)) return "AUDIO";
     return "FLUX";
@@ -724,7 +731,7 @@ async function detectVideosOnPage(uiLanguage = "fr") {
     });
   }
 
-  const mediaPattern = /\.(?:mp4|m4v|mov|webm|m3u8|mpd|mp3|m4a|aac|ogg|ogv)(?:$|[?#&])/i;
+  const mediaPattern = /\.(?:mp4|m4v|mov|webm|mkv|m3u8|mpd|mp3|m4a|aac|ogg|ogv)(?:$|[?#&])/i;
   const linkedMedia = Array.from(document.querySelectorAll("a[href], source[src], embed[src]"), (element) => (
     element.href || element.src
   )).filter(Boolean);
@@ -810,7 +817,7 @@ async function detectVideosOnPage(uiLanguage = "fr") {
     const parsedResource = new URL(entry.name);
     const hiddenDelivery = parsedResource.hostname === "delivery.tf1.fr";
     const isStream = kind === "HLS" || kind === "DASH" || hiddenDelivery;
-    const isDirectMedia = ["MP4", "WEBM", "VIDÉO", "AUDIO"].includes(kind);
+    const isDirectMedia = ["MP4", "WEBM", "MKV", "VIDÉO", "AUDIO"].includes(kind);
     const wasLoadedByMedia = ["video", "audio", "media"].includes(initiator);
     if (!isStream && !isDirectMedia && !wasLoadedByMedia) return;
     add(entry.name, kind === "FLUX" ? copy.mediaStream : detectorText("detectedStream", { kind }), `${entry.name.split("/")[2] || copy.network} · ${copy.networkActivity}`, {
@@ -834,6 +841,7 @@ function selectRealVideos(candidates) {
     DASH: 55,
     MP4: 45,
     WEBM: 40,
+    MKV: 38,
     "VIDÉO": 35,
     PAGE: 25,
     PLAYER: 20,
@@ -880,7 +888,7 @@ function selectRealVideos(candidates) {
     // Un seul lecteur : les manifests et fichiers vus sur le réseau sont ses variantes,
     // pas des vidéos supplémentaires. On n'affiche que la meilleure source complète.
     const onlyGroup = Array.from(preferredGroups.values())[0];
-    const ungroupedStreams = usable.filter((video) => !video.playerKey && ["HLS", "DASH", "MP4", "WEBM", "VIDÉO"].includes(video.kind));
+    const ungroupedStreams = usable.filter((video) => !video.playerKey && ["HLS", "DASH", "MP4", "WEBM", "MKV", "VIDÉO"].includes(video.kind));
     selected = [best([...onlyGroup, ...ungroupedStreams])];
   } else if (preferredGroups.size > 1) {
     // Plusieurs vrais éléments <video> : une carte par lecteur, sans ses variantes.
@@ -1087,6 +1095,9 @@ function createVideoCard(video, index) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "download";
+  const actions = document.createElement("div");
+  actions.className = "video-actions";
+  actions.append(button);
   const defaultButtonLabel = requiresWebmConversion(video)
     ? t("downloadConvert")
     : t("download");
@@ -1100,28 +1111,24 @@ function createVideoCard(video, index) {
     feedback.dataset.kind = "error";
     feedback.textContent = t("drmManifest");
     card.dataset.index = String(index);
-    card.append(...(thumbnail ? [thumbnail] : []), heading, detail, button, feedback);
+    card.append(...(thumbnail ? [thumbnail] : []), heading, detail, actions, feedback);
     return card;
   }
 
-  button.addEventListener("click", async () => {
-    if (requiresWebmConversion(video)) {
-      const accepted = window.confirm(
-        t("webmConfirm"),
-      );
-      if (!accepted) return;
-    }
+  const page = activePage;
+  const referer = video.url === page.pageUrl ? "" : page.pageUrl;
+  async function startDownload(button, quality, defaultButtonLabel) {
     button.disabled = true;
     button.textContent = t("send");
     feedback.textContent = "";
     try {
       const response = await runtimeMessage({
         type: "download",
-        tabId: activePage.tabId,
+        tabId: page.tabId,
         url: video.url,
-        referer: video.url === activePage.pageUrl ? "" : activePage.pageUrl,
-        sourceTitle: video.label || activePage.pageTitle || "",
-        quality: settings.audioOnly ? "audio" : "best",
+        referer,
+        sourceTitle: video.label || page.pageTitle || "",
+        quality,
         completionSound: settings.completionSound,
         destination: settings.destination,
         destinationPath: settings.destinationPath,
@@ -1135,7 +1142,7 @@ function createVideoCard(video, index) {
         : t("startedBackground");
       if (response.jobId) {
         button.textContent = t("inProgress");
-        showProgress(response.jobId, activePage.tabId, response.destinationLabel, button, feedback);
+        showProgress(response.jobId, page.tabId, response.destinationLabel, button, feedback);
       } else {
         button.disabled = false;
         button.textContent = defaultButtonLabel;
@@ -1146,10 +1153,33 @@ function createVideoCard(video, index) {
       feedback.dataset.kind = "error";
       feedback.textContent = error.message || t("unavailable");
     }
+  }
+  button.addEventListener("click", () => {
+    if (requiresWebmConversion(video) && !window.confirm(t("webmConfirm"))) return;
+    startDownload(button, settings.audioOnly ? "audio" : "best", defaultButtonLabel);
   });
 
+  if (["PAGE", "PLAYER", "DASH", "HLS", "MKV"].includes(video.kind)) {
+    pending4kProbe = pending4kProbe
+      .then(async () => {
+        if (!card.isConnected || page !== activePage) return;
+        const result = await runtimeMessage({ type: "probe_4k_mkv", url: video.url, referer, language: activeLanguage() });
+        if (!result?.available || !card.isConnected || page !== activePage) return;
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = "download download-4k";
+        const label = t("download4k");
+        option.textContent = label;
+        option.addEventListener("click", () => {
+          if (!settings.audioOnly && window.confirm(t("confirm4k"))) startDownload(option, "4k-mkv", label);
+        });
+        actions.append(option);
+      })
+      .catch(() => {});
+  }
+
   card.dataset.index = String(index);
-  card.append(...(thumbnail ? [thumbnail] : []), heading, detail, button, feedback);
+  card.append(...(thumbnail ? [thumbnail] : []), heading, detail, actions, feedback);
   return card;
 }
 
@@ -1289,6 +1319,7 @@ async function scan() {
 
 audioOnly.addEventListener("change", async () => {
   settings.audioOnly = audioOnly.checked;
+  videos.classList.toggle("audio-only", settings.audioOnly);
   await saveSettings();
 });
 

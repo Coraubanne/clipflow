@@ -527,16 +527,23 @@ select {
 
 .without-thumbnail .video-detail { grid-column: 1; }
 
-.download {
-  font-size: 10px;
+.video-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   grid-column: 2;
   grid-row: 3;
+}
+
+.without-thumbnail .video-actions { grid-column: 1; }
+.audio-only .download-4k { display: none; }
+
+.download {
+  font-size: 10px;
   min-height: 34px;
   padding: 7px 10px;
   width: 100%;
 }
-
-.without-thumbnail .download { grid-column: 1; }
 
 .video-feedback {
   color: #248a3d;

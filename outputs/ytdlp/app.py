@@ -24,6 +24,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import END, HORIZONTAL, LEFT, RIGHT, X, filedialog, messagebox, ttk
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
 
 
 APP_NAME = "ClipFlow"
@@ -90,6 +91,7 @@ PROFILES = (
     QualityProfile("Meilleur MP4 compatible", mode="compatible"),
     QualityProfile("Audio uniquement · MP3", audio_only=True),
 )
+FOUR_K_MKV_PROFILE = QualityProfile("4K MKV vers MP4", mode="4k-mkv")
 EXTENSION_PROFILE_BY_KEY = {
     "best": PROFILES[0].label,
     # Compatibilité avec les requêtes créées par les anciennes versions.
@@ -97,6 +99,7 @@ EXTENSION_PROFILE_BY_KEY = {
     "720": PROFILES[0].label,
     "480": PROFILES[0].label,
     "audio": PROFILES[1].label,
+    "4k-mkv": FOUR_K_MKV_PROFILE.label,
 }
 
 
@@ -758,7 +761,7 @@ def direct_stream_output_template(
     hostname = (parsed.hostname or "").casefold()
     path = parsed.path.casefold()
     direct_stream = (
-        path.endswith((".m3u8", ".mpd", ".mp4", ".m4v", ".mov", ".webm", ".ogv"))
+        path.endswith((".m3u8", ".mpd", ".mp4", ".m4v", ".mov", ".webm", ".mkv", ".ogv"))
         or "vimeocdn.com" in hostname
         or ".ism/" in path
     )
@@ -816,6 +819,71 @@ def direct_stream_output_template(
     escaped_title = title.replace("%", "%%")
     escaped_source = source.replace("%", "%%")
     return f"{escaped_source} — {escaped_title} [{identity}].%(ext)s"
+
+
+def is_direct_mkv_url(url: str) -> bool:
+    return urlparse(url).path.casefold().endswith(".mkv")
+
+
+def direct_mkv_is_4k(url: str, ffmpeg: Path, referer: str | None) -> bool:
+    # The generic extractor omits dimensions for raw MKV links. Matroska puts
+    # its track metadata at the beginning, so inspect a bounded prefix.
+    headers = {"Range": "bytes=0-262143"}
+    if referer:
+        headers["Referer"] = referer
+    request = Request(url, headers=headers)
+    try:
+        context = ssl.create_default_context(cafile=ca_bundle())
+        with urlopen(request, timeout=4, context=context) as response:
+            prefix = response.read(262144)
+        result = subprocess.run(
+            [str(ffmpeg), "-hide_banner", "-f", "matroska", "-i", "pipe:0"],
+            input=prefix, capture_output=True, timeout=4, check=False,
+        )
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return False
+    # FFmpeg reports the input streams on stderr and exits without an output.
+    return bool(re.search(rb"Stream #0:\d+[^\n]*Video:[^\n]*\b\d{4}x2160\b", result.stderr))
+
+
+def mkv_4k_format_args(url: str) -> list[str]:
+    if is_direct_mkv_url(url):
+        # The raw stream is separately checked before the download starts.
+        return ["--format", "b*[height=?2160][ext=mkv]"]
+    split_video = "bv[height=2160][ext~='^(webm|mp4|mkv)$'][vcodec!^=avc1]"
+    selector = (
+        f"{split_video}+ba[format_note*=original]/"
+        f"b[height=2160][ext=mkv][format_note*=original]/"
+        f"{split_video}+ba/b[height=2160][ext=mkv]"
+    )
+    return ["--format-sort-force", "--format-sort", "lang,res,br,fps", "--format", selector,
+            "--merge-output-format", "mkv"]
+
+
+def has_4k_mkv(url: str, referer: str | None = None) -> bool:
+    prefix = yt_dlp_prefix()
+    ffmpeg = ffmpeg_executable()
+    if not prefix or not ffmpeg:
+        return False
+    if is_direct_mkv_url(url):
+        return direct_mkv_is_4k(url, ffmpeg, referer)
+    command = [
+        *prefix, "--ignore-config", "--no-playlist", "--simulate",
+        "--socket-timeout", "6", "--extractor-retries", "0",
+        "--extractor-args", "generic:impersonate",
+        "--ffmpeg-location", str(ffmpeg),
+        *mkv_4k_format_args(url), "--print", "%(height)s|%(ext)s",
+    ]
+    if referer:
+        command.extend(["--referer", referer])
+    try:
+        result = subprocess.run(
+            [*command, "--", url], env=child_environment(ca_bundle()),
+            capture_output=True, text=True, timeout=12, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and result.stdout.strip() == "2160|mkv"
 
 
 def build_download_command(
@@ -881,12 +949,21 @@ def build_download_command(
         "--output",
         output_template,
     ]
+    if profile.mode == "4k-mkv":
+        # Keep the opt-in 4K file distinct from an existing standard MP4.
+        command[-1] = output_template.removesuffix(".%(ext)s") + " 4K.%(ext)s"
     if ffmpeg:
         command.extend(["--ffmpeg-location", str(ffmpeg)])
     if referer:
         command.extend(["--referer", referer])
 
-    if profile.audio_only:
+    if profile.mode == "4k-mkv":
+        command.extend([
+            *mkv_4k_format_args(url), "--recode-video", "mp4",
+            "--postprocessor-args",
+            "VideoConvertor+ffmpeg_o:-c:v libx264 -preset veryfast -crf 17 -pix_fmt yuv420p -c:a aac -b:a 256k -movflags +faststart",
+        ])
+    elif profile.audio_only:
         audio_selector = (
             "ba[format_note*=original]/ba/b"
             if is_youtube_url(url)
@@ -983,6 +1060,7 @@ class DownloadWorker:
         environment: dict[str, str],
         cookie_browser: str | None,
         automatic_cookies: bool = False,
+        direct_4k_mkv: tuple[str, Path, str | None] | None = None,
     ) -> None:
         self.command = command
         self.youtube_hd_guard = is_youtube_url(command[-1]) and any(
@@ -992,6 +1070,7 @@ class DownloadWorker:
         self.environment = environment
         self.cookie_browser = cookie_browser
         self.automatic_cookies = automatic_cookies
+        self.direct_4k_mkv = direct_4k_mkv
         self.process: subprocess.Popen[str] | None = None
         self.cancelled = False
         self.cookie_decision = threading.Event()
@@ -1023,6 +1102,9 @@ class DownloadWorker:
 
     def _run(self) -> None:
         try:
+            if self.direct_4k_mkv and not direct_mkv_is_4k(*self.direct_4k_mkv):
+                self.events.put(("error", "Impossible de confirmer la résolution 4K de cette source MKV."))
+                return
             automatic_retries = 0
             quality_retries = 0
             quality_fallback_used = False
@@ -1156,6 +1238,8 @@ class DownloadWorker:
                     self.events.put(("phase", "Flux sélectionnés · téléchargement…"))
                 elif line.startswith("[Merger]"):
                     self.events.put(("phase", "Assemblage audio et vidéo sans réencodage…"))
+                elif line.startswith("[VideoConvertor]"):
+                    self.events.put(("phase", "Conversion de la vidéo en MP4…"))
                 self.events.put(("log", line))
         return (
             self.process.wait(),
@@ -1229,6 +1313,7 @@ class TubeSaveApp(tk.Tk):
         self.last_activity_at = time.monotonic()
         self.premiere_import_pending = False
         self.request_referer: str | None = None
+        self.request_4k_mkv = False
         self.request_source_title: str | None = None
         self.request_browser = "chrome"
         self.extension_inbox = extension_inbox()
@@ -1441,10 +1526,17 @@ class TubeSaveApp(tk.Tk):
         resume_legacy_partials(destination, self.url.get().strip())
         hide_visible_partials(destination, self.url.get().strip())
         profile = PROFILES[1] if self.audio_only.get() else PROFILES[0]
+        if self.request_4k_mkv:
+            profile = FOUR_K_MKV_PROFILE
+        self.request_4k_mkv = False
+        url = self.url.get().strip()
+        direct_4k_mkv = None
+        if profile.mode == "4k-mkv" and is_direct_mkv_url(url):
+            direct_4k_mkv = (url, self.ffmpeg, self.request_referer)
         try:
             command = build_download_command(
                 self.prefix,
-                self.url.get().strip(),
+                url,
                 destination,
                 profile,
                 self.ffmpeg,
@@ -1485,6 +1577,7 @@ class TubeSaveApp(tk.Tk):
             child_environment(self.bundle),
             cookie_source,
             self.automatic_browser_session and is_youtube_url(self.url.get()),
+            direct_4k_mkv=direct_4k_mkv,
         )
         self.last_activity_at = time.monotonic()
         write_extension_status(self.active_job_id, "running", 1, "Analyse de la vidéo…")
@@ -1515,6 +1608,7 @@ class TubeSaveApp(tk.Tk):
                     self.url.set(url)
                     self.folder.set(str(destination))
                     self.audio_only.set(quality == PROFILES[1].label)
+                    self.request_4k_mkv = quality == FOUR_K_MKV_PROFILE.label
                     self.request_referer = referer
                     self.request_source_title = source_title
                     self.status.set("Vidéo détectée par l’extension")
@@ -1589,7 +1683,7 @@ class TubeSaveApp(tk.Tk):
             language = parts[3] if len(parts) > 3 else ""
             rate = f"{bitrate} kb/s" if bitrate not in {"", "NA", "None"} else "débit source"
             audio = f"audio original {language}" if language not in {"", "NA", "None"} else "audio original"
-            self.format_details = f"Flux source {height}p · {codec} · {audio} · {rate} · sans conversion"
+            self.format_details = f"Flux source {height}p · {codec} · {audio} · {rate}"
             self.details.set(self.format_details)
         elif event == "file":
             self.last_file = Path(str(payload))

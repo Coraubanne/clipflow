@@ -2,6 +2,10 @@
 
 All notable user-facing changes are documented here.
 
+## 2.17.0 — 2026-11-27
+
+- Added an optional 4K download for MKV sources and compatible split streams. ClipFlow converts the result to a 2160p MP4 after confirmation.
+
 ## 2.16.3 — 2026-11-27
 
 - Version-only release to test the updater.

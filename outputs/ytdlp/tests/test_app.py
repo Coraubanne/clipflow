@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app import (
+    FOUR_K_MKV_PROFILE,
     PROFILES,
     DownloadWorker,
     acquire_agent_lock,
@@ -23,6 +24,7 @@ from app import (
     ensure_native_host,
     extension_request_values,
     hide_visible_partials,
+    has_4k_mkv,
     is_web_url,
     is_youtube_url,
     is_retryable_output,
@@ -41,6 +43,31 @@ from app import (
 
 
 class TubeSaveTests(unittest.TestCase):
+    def test_opt_in_4k_uses_only_2160p_and_a_distinct_mp4(self):
+        url = "https://www.youtube.com/watch?v=example"
+        command = build_download_command(
+            ["yt-dlp"], url, Path("/tmp"), FOUR_K_MKV_PROFILE, Path("/ffmpeg"), None,
+        )
+        selector = command[command.index("--format") + 1]
+        for alternative in selector.split("/"):
+            self.assertIn("[height=2160]", alternative)
+        self.assertIn("format_note*=original", selector.split("/")[0])
+        self.assertEqual(command[command.index("--merge-output-format") + 1], "mkv")
+        self.assertEqual(command[command.index("--recode-video") + 1], "mp4")
+        self.assertTrue(command[command.index("--output") + 1].endswith(" 4K.%(ext)s"))
+
+    def test_4k_probe_rejects_lower_resolution_and_direct_mp4(self):
+        url = "https://www.youtube.com/watch?v=example"
+        with (
+            patch("app.yt_dlp_prefix", return_value=["yt-dlp"]),
+            patch("app.ffmpeg_executable", return_value=Path("/ffmpeg")),
+            patch("app.subprocess.run") as invoke,
+        ):
+            for stdout, available in (("2160|mkv\n", True), ("1080|mkv\n", False), ("2160|mp4\n", False)):
+                with self.subTest(stdout=stdout):
+                    invoke.return_value = subprocess.CompletedProcess([], 0, stdout=stdout)
+                    self.assertIs(has_4k_mkv(url), available)
+
     def test_only_one_background_agent_can_hold_the_runtime_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)

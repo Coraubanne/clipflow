@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.16.3")
+        self.assertEqual(manifest["version"], "2.17.0")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,7 +27,7 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.16.3"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.17.0"', source)
         self.assertIn("browserApi.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
@@ -60,7 +60,7 @@ class ChromeExtensionTests(unittest.TestCase):
     def test_popup_sends_page_title_for_generic_stream_filenames(self):
         popup = (EXTENSION / "popup.js").read_text(encoding="utf-8")
         background = (EXTENSION / "background.js").read_text(encoding="utf-8")
-        self.assertIn("sourceTitle: video.label || activePage.pageTitle", popup)
+        self.assertIn("sourceTitle: video.label || page.pageTitle", popup)
         self.assertIn("nativeRequest.sourceTitle = sourceTitle", background)
 
     def test_youtube_navigation_pages_are_not_offered_as_videos(self):
@@ -104,7 +104,14 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn('id="audio-only"', markup)
         self.assertNotIn('id="quality"', markup)
         self.assertIn('settings.audioOnly ? "audio" : "best"', source)
-        self.assertIn('requestedQuality === "audio" ? "audio" : "best"', background)
+        self.assertIn('["audio", "4k-mkv"].includes(requestedQuality) ? requestedQuality : "best"', background)
+
+    def test_4k_conversion_is_separate_and_requires_positive_probe(self):
+        source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
+        probe = source.index('type: "probe_4k_mkv"')
+        guard = source.index("!result?.available", probe)
+        download = source.index('startDownload(option, "4k-mkv", label)', guard)
+        self.assertIn('window.confirm(t("confirm4k"))', source[guard:download])
 
     def test_completion_sound_can_be_disabled_and_is_remembered(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
@@ -280,15 +287,10 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("function requiresWebmConversion(video)", source)
         self.assertIn('if (video.kind === "WEBM") return true;', source)
         self.assertIn('.endsWith(".webm")', source)
-        self.assertIn("if (requiresWebmConversion(video))", source)
-        self.assertIn("const accepted = window.confirm(", source)
         self.assertIn("convertir en MP4", source)
         self.assertIn('"Télécharger et convertir en MP4"', source)
-        self.assertIn("if (!accepted) return;", source)
-        click_handler = source.index('button.addEventListener("click", async () => {')
-        confirmation = source.index("window.confirm(", click_handler)
-        send_download = source.index("runtimeMessage({", confirmation)
-        self.assertLess(confirmation, send_download)
+        confirmation = 'if (requiresWebmConversion(video) && !window.confirm(t("webmConfirm"))) return;'
+        self.assertIn(confirmation + '\n    startDownload(button,', source)
 
     def test_substack_native_players_use_their_public_mp4_sources(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")

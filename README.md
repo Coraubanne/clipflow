@@ -28,6 +28,8 @@ GitHub’s **Code → Download ZIP** option downloads the source code. Use the D
 
 ClipFlow looks for the highest quality it can deliver as MP4, including 4K where a compatible stream is available. It prioritizes the original audio track when the source identifies it and asks before converting a detected WebM. Finished files use a name such as `Channel — Video title [identifier].mp4`.
 
+When ClipFlow finds a 4K MKV or separate 4K streams it can merge into MKV, an additional button downloads and converts the video to 2160p MP4. The finished file has a `4K` suffix.
+
 Site compatibility depends on the player and the media formats it exposes. Use ClipFlow for media you’re authorized to download. DRM-protected streams are unsupported. [Usage and legal notes](LEGAL.md)
 
 ## Send a file to Premiere Pro
