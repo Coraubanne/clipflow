@@ -28,7 +28,7 @@ import certifi
 GITHUB_OWNER = "Coraubanne"
 GITHUB_REPOSITORY = "clipflow"
 CURRENT_RELEASE = 75
-CURRENT_VERSION = "2.19.2"
+CURRENT_VERSION = "2.19.3"
 APP_BUNDLE_ID = "fr.clipflow.app"
 EXTENSION_ID = "emfjpphkcgnjldilcnieaoppmfpfkhfg"
 PREMIERE_PLUGIN_ID = "fr.clipflow.premiere.bridge"

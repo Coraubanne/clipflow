@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.19.2";
+const EXPECTED_EXTENSION_VERSION = "2.19.3";
 const browserApi = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
@@ -49,6 +49,9 @@ const UI_TEXT = {
     drmManifest: "Le manifeste de cette source est chiffré par DRM.", downloadConvert: "Télécharger et convertir en MP4",
     download4k: "Télécharger le MP4 4K sans perte",
     losslessFile: "MKV → MP4 · fichier parfois volumineux",
+    frameIoOriginal: "Original", frameIoDownload: "Ouvrir le téléchargement Frame.io",
+    frameIoDirections: "Menu du fichier → Download → Original",
+    frameIoUnavailable: "Le téléchargement de l’original est indisponible dans le menu Frame.io.",
     cancelDownload: "Annuler", cancelling: "Annulation…", conversionStage: "Conversion",
     unknownQuality: "Qualité inconnue",
     send: "Envoi…", unavailable: "ClipFlow est indisponible.", tf1Preparing: "Préparation automatique du flux TF1…",
@@ -92,6 +95,9 @@ const UI_TEXT = {
     drmManifest: "This source manifest is DRM-encrypted.", downloadConvert: "Download and convert to MP4",
     download4k: "Download lossless 4K MP4",
     losslessFile: "MKV → MP4 · file can be large",
+    frameIoOriginal: "Original", frameIoDownload: "Open Frame.io download",
+    frameIoDirections: "File menu → Download → Original",
+    frameIoUnavailable: "The original download is unavailable in the Frame.io menu.",
     cancelDownload: "Cancel", cancelling: "Cancelling…", conversionStage: "Conversion",
     unknownQuality: "Unknown quality",
     send: "Sending…", unavailable: "ClipFlow is unavailable.", tf1Preparing: "Automatically preparing the TF1 stream…",
@@ -530,6 +536,7 @@ function detectVideosOnPage(uiLanguage = "fr") {
       kind,
       height: Number(options.height) || 0,
       pageFallback: Boolean(options.pageFallback),
+      frameIoOriginal: Boolean(options.frameIoOriginal),
       priority: Number(options.priority) || 0,
       playerKey: options.playerKey || "",
       source: options.source || "page",
@@ -577,6 +584,22 @@ function detectVideosOnPage(uiLanguage = "fr") {
     }
     seen.set(identity, found.length);
     found.push(candidate);
+  }
+
+  if (location.hostname === "next.frame.io" && /^\/project\/[^/]+\/view\/[^/]+/.test(location.pathname)) {
+    const player = document.querySelector('video[data-player="main"]');
+    const filename = title.match(/^(.+?\.(?:mp4|mov|mxf|m4v|webm|mkv|avi))(?:\s+-\s+|$)/i)?.[1];
+    if ((player || filename) && document.querySelector('[data-testid="breadcrumb-asset-menu-trigger"]')) {
+      add(pageUrl, filename || title, "", {
+        kind: "PAGE",
+        frameIoOriginal: true,
+        thumbnail: player?.poster || pageThumbnail,
+        thumbnailScore: player?.poster ? 70 : 0,
+        capturedThumbnail: drmDetected ? "" : captureVideoFrame(player),
+        thumbnailRect: drmDetected ? null : visibleRect(player),
+      });
+    }
+    return { pageUrl, pageTitle: title, frameIoAsset: true, videos: found };
   }
 
   const youtube = /(^|\.)youtube\.com$/i.test(location.hostname) || location.hostname === "youtu.be";
@@ -1143,6 +1166,56 @@ function qualityLabel(height) {
   return `${height}p`;
 }
 
+function openFrameIoDownload(expectedUrl) {
+  const assetUrl = new URL(expectedUrl);
+  const sameAsset = () => location.hostname === "next.frame.io"
+    && location.origin === assetUrl.origin
+    && location.pathname === assetUrl.pathname
+    && location.search === assetUrl.search;
+  const trigger = document.querySelector('[data-testid="breadcrumb-asset-menu-trigger"]');
+  if (!sameAsset() || !trigger) return false;
+
+  async function waitForElement(getElement) {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const element = getElement();
+      if (element) return element;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    return null;
+  }
+
+  // Open the menu once focus has returned from the extension popup to Frame.io.
+  setTimeout(async () => {
+    if (!sameAsset() || !trigger.isConnected) return;
+    const getMenu = () => document.getElementById(trigger.getAttribute("aria-controls"));
+    if (trigger.getAttribute("aria-expanded") !== "true") {
+      trigger.focus();
+      trigger.click();
+    }
+    const menu = await waitForElement(getMenu);
+    if (!sameAsset()) return;
+    if (!menu) {
+      trigger.focus();
+      trigger.animate([{ outline: "2px solid #7d7aff" }, { outlineColor: "transparent" }], 2000);
+      return;
+    }
+    const download = Array.from(menu.querySelectorAll('[role="menuitem"]')).find((item) => (
+      item.getAttribute("aria-haspopup") === "menu"
+      && item.getAttribute("aria-disabled") !== "true"
+      && /^(?:download|télécharger|téléchargement)$/i.test(item.textContent.trim())
+    ));
+    if (!download) return;
+    download.focus();
+    if (download.getAttribute("aria-expanded") !== "true") {
+      download.dispatchEvent(new PointerEvent("pointerover", { pointerType: "mouse", bubbles: true }));
+      download.dispatchEvent(new PointerEvent("pointerenter", { pointerType: "mouse" }));
+    }
+    const original = await waitForElement(() => document.querySelector('[data-testid="Download original file"]'));
+    if (sameAsset() && original && original.getAttribute("aria-disabled") !== "true") original.focus();
+  }, 160);
+  return true;
+}
+
 function createVideoCard(video, index, initialQuality = "best") {
   let downloadQuality = initialQuality;
   const card = document.createElement("article");
@@ -1153,7 +1226,7 @@ function createVideoCard(video, index, initialQuality = "best") {
   heading.className = "video-heading";
   const kind = document.createElement("span");
   kind.className = "video-kind";
-  kind.textContent = qualityLabel(video.height);
+  kind.textContent = video.frameIoOriginal ? t("frameIoOriginal") : qualityLabel(video.height);
   const title = document.createElement("div");
   title.className = "video-title";
   title.textContent = video.label;
@@ -1166,7 +1239,8 @@ function createVideoCard(video, index, initialQuality = "best") {
   const audioFormat = document.createElement("span");
   audioFormat.className = "format-audio";
   audioFormat.textContent = "MP3";
-  detail.append(videoFormat, audioFormat);
+  if (video.frameIoOriginal) detail.textContent = t("frameIoDirections");
+  else detail.append(videoFormat, audioFormat);
   const button = document.createElement("button");
   button.type = "button";
   button.className = "download";
@@ -1179,18 +1253,42 @@ function createVideoCard(video, index, initialQuality = "best") {
   button.textContent = defaultButtonLabel;
   const feedback = document.createElement("div");
   feedback.className = "video-feedback";
+  card.dataset.index = String(index);
+  card.append(heading, detail, actions, feedback);
+
+  const page = activePage;
+  if (video.frameIoOriginal) {
+    button.textContent = t("frameIoDownload");
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        const [injection] = await browserApi.scripting.executeScript({
+          target: { tabId: page.tabId },
+          func: openFrameIoDownload,
+          args: [video.url],
+        });
+        if (injection?.result) {
+          window.close();
+        } else {
+          feedback.textContent = t("frameIoUnavailable");
+        }
+      } catch (_error) {
+        feedback.textContent = t("frameIoUnavailable");
+      } finally {
+        button.disabled = false;
+      }
+    });
+    return card;
+  }
 
   if (video.drmProtected) {
     button.disabled = true;
     button.textContent = t("protected");
     feedback.dataset.kind = "error";
     feedback.textContent = t("drmManifest");
-    card.dataset.index = String(index);
-    card.append(heading, detail, actions, feedback);
     return card;
   }
 
-  const page = activePage;
   const referer = video.url === page.pageUrl ? "" : page.pageUrl;
   async function startDownload(button, quality, defaultButtonLabel) {
     button.disabled = true;
@@ -1261,14 +1359,13 @@ function createVideoCard(video, index, initialQuality = "best") {
       .catch(() => {});
   }
 
-  card.dataset.index = String(index);
-  card.append(heading, detail, actions, feedback);
   return card;
 }
 
 async function scan({ refreshFormats = false } = {}) {
   const request = ++scanRequest;
   activePage = null;
+  document.body.classList.remove("frameio-asset");
   videos.replaceChildren();
   pageTitle.textContent = t("analyzingPage");
   setStatus(t("searchingPlayers"));
@@ -1281,7 +1378,8 @@ async function scan({ refreshFormats = false } = {}) {
       throw new Error(t("chromePageUnsupported"));
     }
     const host = new URL(tab.url).hostname;
-    const playerSite = /(^|\.)(?:youtube\.com|dailymotion\.[a-z]{2,3})$/i.test(host) || host === "youtu.be";
+    const knownPlayerSite = /(^|\.)(?:youtube\.com|dailymotion\.[a-z]{2,3})$/i.test(host) || host === "youtu.be";
+    const playerSite = knownPlayerSite || host === "next.frame.io";
     const getMonitoredMedia = () => runtimeMessage({
       type: "get_network_media", tabId: tab.id, language: activeLanguage(),
     }).catch(() => null);
@@ -1292,7 +1390,8 @@ async function scan({ refreshFormats = false } = {}) {
       args: [activeLanguage()],
     });
     let results = playerSite ? await detect(false).catch(() => null) : null;
-    const mainVideoFound = Boolean(results?.[0]?.result?.videos?.length);
+    const mainVideoFound = Boolean(results?.[0]?.result?.frameIoAsset
+      || (knownPlayerSite && results?.[0]?.result?.videos?.length));
     const monitoredMediaRequest = mainVideoFound ? null : (monitored || getMonitoredMedia());
     try {
       if (!mainVideoFound) results = await detect(true);
@@ -1303,6 +1402,7 @@ async function scan({ refreshFormats = false } = {}) {
     if (request !== scanRequest) return;
     const mainResult = results.find((result) => result.frameId === 0)?.result;
     if (!mainResult) throw new Error(t("pageNoResponse"));
+    document.body.classList.toggle("frameio-asset", Boolean(mainResult.frameIoAsset));
     const topPlayerKeys = new Set(mainResult.videos.map((video) => video.playerKey).filter(Boolean));
     const singleEmbeddedPlayer = topPlayerKeys.has("embed-0")
       && !Array.from(topPlayerKeys).some((key) => /^embed-[1-9]\d*$/.test(key));
@@ -1362,7 +1462,7 @@ async function scan({ refreshFormats = false } = {}) {
     const multipleVideos = filtered.videos.length > 1;
     const selectedVideos = filtered.videos.map((video, index) => ({
       ...video,
-      label: cleanMediaTitle(multipleVideos
+      label: cleanMediaTitle(multipleVideos || video.frameIoOriginal
         ? (video.label || `${t("video")} ${index + 1}`)
         : (mediaTitle || video.label)),
     }));

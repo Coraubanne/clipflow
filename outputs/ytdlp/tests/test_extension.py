@@ -9,7 +9,7 @@ EXTENSION = Path(__file__).resolve().parents[2] / "ClipFlow Chrome"
 class ChromeExtensionTests(unittest.TestCase):
     def test_manifest_adds_scoped_tf1_network_access(self):
         manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.19.2")
+        self.assertEqual(manifest["version"], "2.19.3")
         self.assertEqual(manifest["name"], "__MSG_extensionName__")
         self.assertEqual(manifest["default_locale"], "en")
         self.assertEqual(
@@ -27,7 +27,7 @@ class ChromeExtensionTests(unittest.TestCase):
 
     def test_popup_scans_loaded_streams_and_embedded_frames(self):
         source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
-        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.19.2"', source)
+        self.assertIn('EXPECTED_EXTENSION_VERSION = "2.19.3"', source)
         self.assertIn("browserApi.runtime.reload()", source)
         self.assertIn('performance.getEntriesByType("resource")', source)
         self.assertIn('return "HLS"', source)
@@ -289,6 +289,13 @@ class ChromeExtensionTests(unittest.TestCase):
         self.assertIn("function cleanMediaTitle(value)", source)
         self.assertIn('.replace(/^\\s*[\\[(]\\d+[\\])]\\s*/, "")', source)
         self.assertIn("const mediaTitle = cleanMediaTitle(tab.title || mainResult.pageTitle)", source)
+
+    def test_frame_io_asset_uses_its_original_download_menu(self):
+        source = (EXTENSION / "popup.js").read_text(encoding="utf-8")
+        self.assertIn('document.querySelector(\'video[data-player="main"]\')', source)
+        self.assertIn("frameIoAsset: true, videos: found", source)
+        self.assertIn('document.querySelector(\'[data-testid="Download original file"]\')', source)
+        self.assertIn("func: openFrameIoDownload,", source)
         self.assertIn("label: cleanMediaTitle(multipleVideos", source)
 
     def test_direct_webm_requires_confirmation_before_conversion_download(self):

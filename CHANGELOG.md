@@ -2,6 +2,10 @@
 
 All notable user-facing changes are documented here.
 
+## 2.19.3 — 2026-11-27
+
+- Show one card per Frame.io V4 asset and direct users to Frame.io’s original-file download.
+
 ## 2.19.2 — 2026-11-27
 
 - Show video proposals immediately after detection while thumbnails and resolutions load.

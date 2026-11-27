@@ -215,6 +215,7 @@ select {
 }
 
 .quick-options { margin-bottom: 8px; }
+body.frameio-asset .quick-options { display: none; }
 
 .audio-option,
 .sound-option {
