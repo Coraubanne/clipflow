@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 
 MAX_MESSAGE_SIZE = 1024 * 1024
-QUALITY_KEYS = {"best", "audio", "1080", "720", "480", "4k-mkv", "hd"}
+QUALITY_KEYS = {"best", "audio", "1080", "720", "480", "4k-mkv", "4k-lossless", "hd"}
 DESTINATION_KEYS = {"downloads", "movies", "desktop", "custom", "premiere"}
 JOB_ID_LENGTH_LIMIT = 96
 PREMIERE_STATE_MAX_AGE_SECONDS = 15
@@ -35,6 +35,7 @@ ENGLISH_MESSAGES = {
     "Assemblage audio et vidéo sans réencodage…": "Merging audio and video without re-encoding…",
     "Conversion de la vidéo en MP4…": "Converting the video to MP4…",
     "Conversion audio en MP3…": "Converting audio to MP3…",
+    "Les pistes de cette source ne sont pas prises en charge en 4K sans perte.": "The tracks in this source are not supported in lossless 4K mode.",
     "Impossible de confirmer la résolution 4K de cette source MKV.": "Could not verify the 4K resolution of this MKV source.",
     "Téléchargement annulé": "Download cancelled",
     "Le téléchargement n’a pas pu être terminé.": "The download could not be completed.",

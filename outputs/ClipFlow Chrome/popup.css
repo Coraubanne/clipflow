@@ -577,6 +577,14 @@ select {
 }
 
 .without-thumbnail .video-actions { grid-column: 1; }
+.premiere-lossless { display: none; }
+.premiere-output .premiere-lossless {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  font-size: 9px;
+  gap: 4px;
+}
 .audio-only [data-quality="4k-mkv"],
 .video-list:not(.audio-only) .no-standard { display: none; }
 

@@ -10,6 +10,8 @@ from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessorError, FFmpegVideoCon
 EDITABLE_H264 = ("-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p")
 EDITABLE_AAC = ("-c:a", "aac", "-b:a", "256k")
 STREAM = re.compile(r"^\s*Stream #0:\d+[^\n]*?: (Video|Audio): (\w+)([^\n]*)", re.MULTILINE)
+LOSSLESS_H264 = ("-c:v", "libx264", "-preset", "ultrafast", "-qp", "0", "-fps_mode", "passthrough", "-xerror")
+LOSSLESS_UNSUPPORTED = "ClipFlow 4K lossless: unsupported tracks"
 
 
 def mp4_track_options(stream_info: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -34,9 +36,25 @@ def mp4_track_options(stream_info: str) -> tuple[tuple[str, ...], tuple[str, ...
     return video_options, audio_options
 
 
+def lossless_track_options(stream_info: str) -> tuple[str, ...]:
+    streams = STREAM.findall(stream_info)
+    video = [details for kind, _, details in streams if kind == "Video"]
+    if len(video) != 1 or not re.search(r"\b\d{4}x2160\b", video[0]):
+        raise FFmpegPostProcessorError(LOSSLESS_UNSUPPORTED)
+    if any(kind == "Audio" and codec != "aac" for kind, codec, _ in streams):
+        raise FFmpegPostProcessorError(LOSSLESS_UNSUPPORTED)
+    video_options, _ = mp4_track_options(stream_info)
+    if video_options == EDITABLE_H264:
+        if not re.search(r"\byuv420p\b", video[0]):
+            raise FFmpegPostProcessorError(LOSSLESS_UNSUPPORTED)
+        video_options = LOSSLESS_H264
+    return (*video_options, "-c:a", "copy")
+
+
 class ClipFlow4KPP(FFmpegVideoConvertorPP):
-    def __init__(self, downloader=None):
+    def __init__(self, downloader=None, lossless="0"):
         super().__init__(downloader, preferedformat="mp4")
+        self.lossless = lossless == "1"
 
     def run_ffmpeg(self, path, out_path, opts, **kwargs):
         try:
@@ -45,9 +63,14 @@ class ClipFlow4KPP(FFmpegVideoConvertorPP):
                 [self.executable, "-hide_banner", "-i", self._ffmpeg_filename_argument(path)],
                 capture_output=True, text=True, timeout=5, check=False,
             )
-            video, audio = mp4_track_options(probe.stderr)
         except (OSError, subprocess.TimeoutExpired):
-            video, audio = EDITABLE_H264, EDITABLE_AAC
+            stream_info = ""
+        else:
+            stream_info = probe.stderr
+
+        if self.lossless:
+            return super().run_ffmpeg(path, out_path, [*opts, *lossless_track_options(stream_info)], **kwargs)
+        video, audio = mp4_track_options(stream_info)
 
         if video != EDITABLE_H264 or audio != EDITABLE_AAC:
             try:

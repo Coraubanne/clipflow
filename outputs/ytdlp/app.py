@@ -96,6 +96,7 @@ PROFILES = (
     QualityProfile("Audio uniquement · MP3", audio_only=True),
 )
 FOUR_K_MKV_PROFILE = QualityProfile("4K MKV vers MP4", mode="4k-mkv")
+FOUR_K_LOSSLESS_PROFILE = QualityProfile("4K MP4 sans perte", mode="4k-lossless")
 HD_PROFILE = QualityProfile("MP4 jusqu’en 1080p", max_height=1080, mode="compatible")
 EXTENSION_PROFILE_BY_KEY = {
     "best": PROFILES[0].label,
@@ -105,6 +106,7 @@ EXTENSION_PROFILE_BY_KEY = {
     "480": PROFILES[0].label,
     "audio": PROFILES[1].label,
     "4k-mkv": FOUR_K_MKV_PROFILE.label,
+    "4k-lossless": FOUR_K_LOSSLESS_PROFILE.label,
     "hd": HD_PROFILE.label,
 }
 
@@ -1043,19 +1045,25 @@ def build_download_command(
         "--output",
         output_template,
     ]
-    if profile.mode == "4k-mkv" or profile.max_height:
+    mkv_conversion = profile.mode in {"4k-mkv", "4k-lossless"}
+    if mkv_conversion or profile.max_height:
         # Resolution-specific downloads must not reuse an existing standard MP4.
-        resolution = "4K" if profile.mode == "4k-mkv" else "%(height)sp"
+        resolution = "4K" if mkv_conversion else "%(height)sp"
+        if profile.mode == "4k-lossless":
+            resolution = "4K sans perte"
         command[-1] = output_template.removesuffix(".%(ext)s") + f" {resolution}.%(ext)s"
     if ffmpeg:
         command.extend(["--ffmpeg-location", str(ffmpeg)])
     if referer:
         command.extend(["--referer", referer])
 
-    if profile.mode == "4k-mkv":
+    if mkv_conversion:
         command.extend([*mkv_4k_format_args(url), "--recode-video", "mp4"])
         if prefix[-1] == "--tubesave-yt-dlp":
-            command.extend(["--use-postprocessor", "ClipFlow4K", "--postprocessor-args", "ClipFlow4K+ffmpeg_o:-movflags +faststart"])
+            postprocessor = "ClipFlow4K:lossless=1" if profile.mode == "4k-lossless" else "ClipFlow4K"
+            command.extend(["--use-postprocessor", postprocessor, "--postprocessor-args", "ClipFlow4K+ffmpeg_o:-movflags +faststart"])
+        elif profile.mode == "4k-lossless":
+            raise ValueError("Le moteur ClipFlow est nécessaire pour la conversion sans perte.")
         else:
             command.extend([
                 "--postprocessor-args",
@@ -1685,7 +1693,7 @@ class TubeSaveApp(tk.Tk):
         self.request_profile = PROFILES[0]
         url = self.url.get().strip()
         direct_4k_mkv = None
-        if profile.mode == "4k-mkv" and is_direct_mkv_url(url):
+        if profile.mode in {"4k-mkv", "4k-lossless"} and is_direct_mkv_url(url):
             direct_4k_mkv = (url, self.ffmpeg, self.request_referer)
         try:
             command = build_download_command(
@@ -1773,7 +1781,8 @@ class TubeSaveApp(tk.Tk):
                     self.folder.set(str(destination))
                     self.audio_only.set(quality == PROFILES[1].label)
                     self.request_profile = next(
-                        (profile for profile in (FOUR_K_MKV_PROFILE, HD_PROFILE) if profile.label == quality),
+                        (profile for profile in (FOUR_K_MKV_PROFILE, FOUR_K_LOSSLESS_PROFILE, HD_PROFILE)
+                         if profile.label == quality),
                         PROFILES[0],
                     )
                     self.request_referer = referer
@@ -1982,6 +1991,8 @@ class TubeSaveApp(tk.Tk):
             self.details.set("Vous pouvez réessayer sans fermer ClipFlow")
             if drm_protected_output(details):
                 concise_error = "Cette source est protégée par DRM."
+            elif "ClipFlow 4K lossless: unsupported tracks" in details:
+                concise_error = "Les pistes de cette source ne sont pas prises en charge en 4K sans perte."
             elif authentication_required_output(details):
                 concise_error = "Connectez-vous au site dans Chrome, puis réessayez."
             else:
@@ -2054,7 +2065,7 @@ def main() -> int:
             os.environ["YTDLP_NO_PLUGINS"] = "1"
         import yt_dlp
 
-        if "ClipFlow4K" in sys.argv[2:]:
+        if any(arg == "ClipFlow4K" or arg.startswith("ClipFlow4K:") for arg in sys.argv[2:]):
             from clipflow_ffmpeg import register_clipflow_4k
 
             register_clipflow_4k()

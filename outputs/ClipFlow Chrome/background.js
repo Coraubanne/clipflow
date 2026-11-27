@@ -2,7 +2,7 @@ const NATIVE_HOST = "fr.tubesave.chrome";
 const browserApi = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const SETTINGS_VERSION = 7;
-const QUALITY_KEYS = new Set(["best", "audio", "1080", "720", "480", "4k-mkv", "hd"]);
+const QUALITY_KEYS = new Set(["best", "audio", "1080", "720", "480", "4k-mkv", "4k-lossless", "hd"]);
 const DESTINATION_KEYS = new Set(["downloads", "movies", "desktop", "custom", "premiere"]);
 const NETWORK_MEDIA_PREFIX = "tubeSaveNetworkMedia:";
 const NETWORK_MEDIA_TTL = 30 * 60 * 1000;
@@ -549,7 +549,7 @@ async function handleMessage(message, sender) {
     ? normalizedWebUrl(message.referer, backgroundText(language, "invalidReferer"))
     : "";
   const requestedQuality = QUALITY_KEYS.has(message.quality) ? message.quality : "best";
-  const quality = ["audio", "4k-mkv", "hd"].includes(requestedQuality) ? requestedQuality : "best";
+  const quality = ["audio", "4k-mkv", "4k-lossless", "hd"].includes(requestedQuality) ? requestedQuality : "best";
   const destination = DESTINATION_KEYS.has(message.destination)
     ? message.destination
     : "downloads";
@@ -582,7 +582,7 @@ async function handleMessage(message, sender) {
   try { refererUrl = referer ? new URL(referer) : null; } catch (_error) { refererUrl = null; }
   const isTf1Page = refererUrl && /(^|\.)tf1\.fr$/i.test(refererUrl.hostname);
   const isTf1Dash = isTf1Page && /(?:\.mpd(?:$|[?#])|vod-das\.|\.ism\/)/i.test(url);
-  if (quality !== "4k-mkv" && isTf1Dash && Number.isInteger(tabId) && tabId >= 0) {
+  if (!["4k-mkv", "4k-lossless"].includes(quality) && isTf1Dash && Number.isInteger(tabId) && tabId >= 0) {
     await browserApi.storage.session.set({
       [tf1PendingKey(tabId)]: {
         nativeRequest,

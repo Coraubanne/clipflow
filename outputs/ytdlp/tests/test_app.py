@@ -93,6 +93,27 @@ class TubeSaveTests(unittest.TestCase):
         self.assertEqual(mp4_track_options(f"{hevc}\n{opus}"), (("-c:v", "copy", "-tag:v", "hvc1"), EDITABLE_AAC))
         self.assertEqual(mp4_track_options(f"{vp9}\n{aac}"), (EDITABLE_H264, ("-c:a", "copy")))
 
+    def test_lossless_4k_rejects_tracks_requiring_a_lossy_fallback(self):
+        from app import FOUR_K_LOSSLESS_PROFILE
+        from clipflow_ffmpeg import FFmpegPostProcessorError, LOSSLESS_H264, lossless_track_options
+
+        video = "  Stream #0:0: Video: vp9 (Profile 0), yuv420p(tv, bt709), 3840x2160"
+        aac = "\n  Stream #0:1(fra): Audio: aac (LC), 48000 Hz"
+        self.assertEqual(lossless_track_options(video + aac), (*LOSSLESS_H264, "-c:a", "copy"))
+        for unsupported in (
+            video.replace("3840x2160", "1920x1080") + aac,
+            video.replace("yuv420p", "yuv420p10le") + aac,
+            video + aac.replace("aac", "opus"),
+        ):
+            with self.assertRaises(FFmpegPostProcessorError):
+                lossless_track_options(unsupported)
+        command = build_download_command(
+            ["ClipFlow", "--tubesave-yt-dlp"], "https://example.com/source.mkv", Path("/tmp"),
+            FOUR_K_LOSSLESS_PROFILE, Path("/ffmpeg"), None,
+        )
+        self.assertIn("ClipFlow4K:lossless=1", command)
+        self.assertTrue(command[command.index("--output") + 1].endswith(" 4K sans perte.%(ext)s"))
+
     def test_4k_probe_rejects_lower_resolution_and_direct_mp4(self):
         url = "https://www.youtube.com/watch?v=example"
         for height, codec, extension, expected in (
