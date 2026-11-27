@@ -1,5 +1,5 @@
 const SETTINGS_VERSION = 7;
-const EXPECTED_EXTENSION_VERSION = "2.18.0";
+const EXPECTED_EXTENSION_VERSION = "2.18.1";
 const browserApi = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof browserApi.runtime.getBrowserInfo === "function";
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
@@ -924,7 +924,7 @@ function setStatus(text, kind = "normal") {
 }
 
 function showProgress(job, button = null, feedback = null) {
-  if (!job.jobId || displayedJobs.has(job.jobId)) return;
+  if (!job.jobId || job.state === "cancelled" || displayedJobs.has(job.jobId)) return;
   const card = progressTemplate.content.firstElementChild.cloneNode(true);
   const label = card.querySelector(".progress-label");
   const detail = card.querySelector(".progress-detail");
@@ -952,11 +952,24 @@ function showProgress(job, button = null, feedback = null) {
     const cancelled = response.state === "cancelled";
     const failed = response.state === "error";
     terminal = complete || cancelled || failed;
+    if (cancelled) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = t("retry");
+      }
+      if (feedback) {
+        feedback.dataset.kind = "success";
+        feedback.textContent = response.message || t("downloadCancelled");
+      }
+      card.remove();
+      displayedJobs.delete(job.jobId);
+      progressSection.hidden = displayedJobs.size === 0;
+      return;
+    }
     view.terminal = terminal;
     const progress = complete ? 100 : Math.max(0, Math.min(99, Math.round(Number(response.progress) || 0)));
     card.classList.toggle("conversion-starting", response.phase === "conversion" && !terminal && progress === 0);
     if (complete) label.textContent = t("downloadComplete");
-    else if (cancelled) label.textContent = t("downloadCancelled");
     else if (failed) label.textContent = t("downloadError");
     else if (response.phase === "conversion") {
       label.textContent = job.title ? `${t("conversionStage")} · ${job.title}` : t("conversionStage");

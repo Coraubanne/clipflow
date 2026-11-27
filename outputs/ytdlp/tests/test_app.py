@@ -81,6 +81,18 @@ class TubeSaveTests(unittest.TestCase):
         self.assertEqual(command[command.index("--recode-video") + 1], "mp4")
         self.assertTrue(command[command.index("--output") + 1].endswith(" 4K.%(ext)s"))
 
+    def test_mp4_copies_only_tracks_known_to_be_compatible(self):
+        from clipflow_ffmpeg import EDITABLE_AAC, EDITABLE_H264, mp4_track_options
+
+        aac = "  Stream #0:1(fra): Audio: aac (LC), 48000 Hz"
+        opus = "  Stream #0:1(fra): Audio: opus, 48000 Hz"
+        avc = "  Stream #0:0: Video: h264 (High), yuv420p(progressive), 3840x2160"
+        hevc = "  Stream #0:0: Video: hevc (Main 10), yuv420p10le(tv), 3840x2160"
+        vp9 = "  Stream #0:0: Video: vp9 (Profile 0), yuv420p, 3840x2160"
+        self.assertEqual(mp4_track_options(f"{avc}\n{aac}"), (("-c:v", "copy"), ("-c:a", "copy")))
+        self.assertEqual(mp4_track_options(f"{hevc}\n{opus}"), (("-c:v", "copy", "-tag:v", "hvc1"), EDITABLE_AAC))
+        self.assertEqual(mp4_track_options(f"{vp9}\n{aac}"), (EDITABLE_H264, ("-c:a", "copy")))
+
     def test_4k_probe_rejects_lower_resolution_and_direct_mp4(self):
         url = "https://www.youtube.com/watch?v=example"
         for height, codec, extension, expected in (

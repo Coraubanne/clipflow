@@ -619,7 +619,7 @@ def yt_dlp_prefix() -> list[str] | None:
         return [executable] if executable else None
     if frozen_application():
         return [sys.executable, "--tubesave-yt-dlp"]
-    return [sys.executable, "-m", "yt_dlp"]
+    return [sys.executable, str(Path(__file__).resolve()), "--tubesave-yt-dlp"]
 
 
 def ca_bundle() -> Path | None:
@@ -1053,11 +1053,14 @@ def build_download_command(
         command.extend(["--referer", referer])
 
     if profile.mode == "4k-mkv":
-        command.extend([
-            *mkv_4k_format_args(url), "--recode-video", "mp4",
-            "--postprocessor-args",
-            "VideoConvertor+ffmpeg_o:-c:v libx264 -preset veryfast -crf 17 -pix_fmt yuv420p -c:a aac -b:a 256k -movflags +faststart",
-        ])
+        command.extend([*mkv_4k_format_args(url), "--recode-video", "mp4"])
+        if prefix[-1] == "--tubesave-yt-dlp":
+            command.extend(["--use-postprocessor", "ClipFlow4K", "--postprocessor-args", "ClipFlow4K+ffmpeg_o:-movflags +faststart"])
+        else:
+            command.extend([
+                "--postprocessor-args",
+                "VideoConvertor+ffmpeg_o:-c:v libx264 -preset veryfast -crf 17 -pix_fmt yuv420p -c:a aac -b:a 256k -movflags +faststart",
+            ])
     elif profile.audio_only:
         audio_selector = (
             "ba[format_note*=original]/ba/b"
@@ -1163,11 +1166,12 @@ class DownloadWorker:
         self.cookie_decision.set()
 
     def _run(self) -> None:
-        if "--recode-video" in self.command or "--extract-audio" in self.command:
+        converts_video = "--recode-video" in self.command
+        if converts_video or "--extract-audio" in self.command:
             with tempfile.TemporaryDirectory(prefix="clipflow-progress-") as directory:
                 self._conversion_report = Path(directory) / "ffmpeg.txt"
                 args = f"-nostats -stats_period 0.5 -progress {shlex.quote(str(self._conversion_report))}"
-                if "--recode-video" in self.command:
+                if converts_video:
                     index = self.command.index("--postprocessor-args") + 1
                     self.command[index] += f" {args}"
                 else:
@@ -1339,7 +1343,7 @@ class DownloadWorker:
                     self.events.put(("phase", "Flux sélectionnés · téléchargement…"))
                 elif line.startswith("[Merger]"):
                     self.events.put(("phase", "Assemblage audio et vidéo sans réencodage…"))
-                elif line.startswith("[VideoConvertor] Converting ") or line.startswith("[ExtractAudio] Destination:"):
+                elif line.startswith(("[VideoConvertor] Converting ", "[ClipFlow4K] Converting ", "[ExtractAudio] Destination:")):
                     audio = line.startswith("[ExtractAudio]")
                     self._start_conversion(line, audio)
                 self.events.put(("log", line))
@@ -1366,7 +1370,7 @@ class DownloadWorker:
                 return
             source = candidates[0]
         else:
-            match = re.match(r"\[VideoConvertor\] Converting video from ([a-z0-9]+) to ", line)
+            match = re.match(r"\[(?:VideoConvertor|ClipFlow4K)\] Converting video from ([a-z0-9]+) to ", line)
             if not match:
                 return
             source = output.with_suffix(f".{match[1]}")
@@ -2050,6 +2054,10 @@ def main() -> int:
             os.environ["YTDLP_NO_PLUGINS"] = "1"
         import yt_dlp
 
+        if "ClipFlow4K" in sys.argv[2:]:
+            from clipflow_ffmpeg import register_clipflow_4k
+
+            register_clipflow_4k()
         yt_dlp.main(sys.argv[2:])
         return 0
     if len(sys.argv) > 1 and sys.argv[1] == "--tubesave-native-host":

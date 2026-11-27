@@ -519,7 +519,7 @@ async function handleMessage(message, sender) {
     const recent = entries.map(({ job }) => job)
       .filter((job) => finishedJob(job) && job.tabId === tabId && job.updatedAt >= cutoff)
       .sort((first, second) => second.updatedAt - first.updatedAt)[0];
-    return { ok: true, jobs: jobs.length || !recent ? jobs : [recent] };
+    return { ok: true, jobs: !jobs.length && recent && recent.state !== "cancelled" ? [recent] : jobs };
   }
   if (message.type === "download_status" || message.type === "cancel_download") {
     const tabId = Number(message.tabId);

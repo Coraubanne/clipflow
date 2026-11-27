@@ -2,6 +2,11 @@
 
 All notable user-facing changes are documented here.
 
+## 2.18.1 — 2026-11-27
+
+- Remove a download’s progress bar when cancellation is confirmed.
+- Copy compatible 4K video and AAC audio into MP4 without re-encoding. Keep the existing high-quality H.264 encode for incompatible video.
+
 ## 2.18.0 — 2026-11-27
 
 - Added cancellation from the extension for queued downloads, active transfers and conversions.
